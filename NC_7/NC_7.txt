@@ -1,6 +1,8 @@
 /*  **************************************
- * Nuclear Version 7.0
+ * Nuclear Version 8.0
  @ Dependency
+ skw_formal_array2text
+ skw_formal_numerinarray
  
  ******************************************/
 
@@ -30,8 +32,6 @@ Vars
 	
 	Numeric currentAsk;
 	Numeric currentBid;
-	Numeric currentAskVol;
-	Numeric currentBidVol;
 	
 	Numeric buyprice; 
 	Numeric sellprice;
@@ -45,29 +45,17 @@ Vars
 	
 	Numeric stage;
 	
-	Numeric color;
-	
 	
 	Numeric orderprice;
 	Numeric orderquantity;
+	String ordertype;
 	
 	NumericArray openaccountbuy[100];
 	NumericArray openaccountsell[100];
-	NumericArray openaccounttemp[100];
-	
-	
-	NumericArray   not_applied_kd;
-	NumericArray   not_applied_pk;
-	NumericArray   not_applied_kk;
-	NumericArray   not_applied_pd;
-	
-	
-	
 	
 	Bool priceinbuy;
 	Bool priceinsell;
 	
-	Bool isUpDown;
 	
 	String filestringbuy; 
 	String filestringsell; 
@@ -82,7 +70,7 @@ Vars
 	
 	Numeric timeholder;
 	String pinzhong;
-	String pinzhongtype;
+	
 	Numeric totalnumber;
 	Numeric totalindex;
 	String restore_type;
@@ -98,14 +86,10 @@ Vars
 	Numeric	today_upperlimit;
 	Numeric outer_count;
 	Bool outer_flag;
-	Numeric tmp_outer_count; 
-	Numeric tmp_totalnumber;
+	
 	Numeric this_loop_sell_limit;
 	Numeric this_loop_buy_limit;
 	
-
-	Numeric min_open_sell;
-	Numeric max_open_buy;
 	
 	  
 Begin
@@ -119,10 +103,9 @@ Begin
 	////////////////////////////////
 	realbuy = True;
 	pinzhong = Symbol();
-	pinzhongtype = Lower(SymbolType());
 	outputfilename = "c:\\continue_"+pinzhong+".txt";
 	
-	totalsign = pinzhong+"total";
+	totalsign = pinzhong+"_total";
 	restore_starttime = 0;
 	restore_endtime = 0;
 	If( barstatus==0 ){
@@ -138,13 +121,17 @@ Begin
 	// Handle Trade Time
 	////////////////////////////////
 	
+	
 	timeholder = CurrentTime();
 	FileAppend(outputfilename,"======================"+Text(CurrentTime)+"=============================");
+	If (Weekday==6 || Weekday==0){
+		FileAppend(outputfilename,"Weekend, no trading");
+	}	
 	
 	If(isnight==True){
 		restore_starttime = 0.205500;
 		restore_endtime = 0.210000; // only need to modify this one for missing init trading tip (night trade)
-		If(timeholder>=0.150001 && timeholder<=0.205500){
+		If(timeholder>=0.150010 && timeholder<=0.205500){
 			return;
 		}
 		If(timeholder>=0.000000 && timeholder<=0.085500){
@@ -156,7 +143,7 @@ Begin
 	If(isnight==False){
 		restore_starttime = 0.085500;
 		restore_endtime = 0.090000;// only need to modify this one for missing init trading tip (day trade)
-		If(timeholder>=0.150001 && timeholder<=0.235959){
+		If(timeholder>=0.150010 && timeholder<=0.235959){
 			return;
 		}
 		If(timeholder>=0.000000 && timeholder<=0.085500){
@@ -187,15 +174,65 @@ Begin
 		}
 	}
 	
+	///////////////////////////////
+	// End of the Day 
+	///////////////////////////////
 	
-	///////////////////////////////////
-	// Retrieve Context BEFORE Trading
-	///////////////////////////////////
 	if(BarStatus==2 && AccountDataExist){
+		If((timeholder>=0.145950 && timeholder<=0.151000)){
+			If(Value(GetTBProfileString(totalsign,"stored")) == 1){
+				FileAppend(outputfilename,"----------already stored----------");
+			}
+			FileAppend(outputfilename,"----------Entering end of the day----------");
+			opencount = A_GetOpenOrderCount();
+			outer_count = Value(GetTBProfileString(totalsign,"total"));
+			FileAppend(outputfilename,"total Number: endofday1    "+GetTBProfileString(totalsign,"total"));
+			SetTBProfileString(totalsign,"total", Text(opencount+outer_count));
+			FileAppend(outputfilename,"total Number: endofday2    "+GetTBProfileString(totalsign,"total"));
+			
+			
+			For i = outer_count+1 To outer_count+opencount
+			{
+				orderquantity = 0;
+				nBorS = A_OpenOrderBuyOrSell(i-outer_count);
+				nEorE = A_OpenOrderEntryOrExit(i-outer_count);
+				orderprice = A_OpenOrderPrice(i-outer_count);
+				orderquantity = A_OpenOrderLot(i-outer_count);
+				ordertype = "";
+				If (nBorS == Enum_Buy() && nEorE==Enum_Entry()){
+					ordertype = "kd";
+				}Else If(nBorS==Enum_Sell()&& nEorE==Enum_Entry()){
+					ordertype = "kk";
+				}Else If(nBorS==Enum_Buy()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
+					ordertype = "pk";
+				}Else If(nBorS==Enum_Sell()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
+					ordertype = "pd";
+				}
+				SetTBProfileString(pinzhong+"_"+Text(i),"type", ordertype);
+				SetTBProfileString(pinzhong+"_"+Text(i),"quantity", Text(orderquantity));
+				SetTBProfileString(pinzhong+"_"+Text(i),"price", Text(orderprice));
+			}
+			SetTBProfileString(totalsign,"stored", Text(1));
+			return;
+		}Else{
+			SetTBProfileString(totalsign,"stored", Text(0));
+		}
+	
+	}
+	
+	
+	/////////////////////////////////////////////
+	// Before Trading: pre-setting protecting deals
+	////////////////////////////////////////////
+	if(BarStatus==2 && AccountDataExist){
+		
 		this_loop_buy_limit = Max(currentBid - 2*step, today_lowerlimit);
 		this_loop_sell_limit = Min(currentBid + 2*step, today_upperlimit);
 		
-		totalnumber = Value(GetTBProfileString("Formal_"+totalsign,"total"));
+		totalnumber = Value(GetTBProfileString(totalsign,"total"));
+		FileAppend(outputfilename,"total Number: pre-setting1    "+GetTBProfileString(totalsign,"total"));
+		FileAppend(outputfilename,"this loop_buy_limit    "+ Text(this_loop_buy_limit));
+		FileAppend(outputfilename,"this loop_sell_limit    "+ Text(this_loop_sell_limit));
 		If(totalnumber>0){
 			outer_count = 0;
 			for  totalindex = 1 To totalnumber {
@@ -257,6 +294,7 @@ Begin
 			}
 			
 			SetTBProfileString(totalsign,"total", Text(outer_count));
+			FileAppend(outputfilename,"total Number: pre-setting2    "+GetTBProfileString(totalsign,"total"));
 			FileAppend(outputfilename,"Outer Size: "+Text(outer_count));
 			
 		}
@@ -270,84 +308,10 @@ Begin
 		return;
 	}
 	
-	/////////////////////////////////////
-	// Initialization status every round ***** continue from here
-	/////////////////////////////////////
-	
-	If(BarStatus==2 && AccountDataExist){
-			FileAppend(outputfilename,"----------- Init for normal trade -----------");
-			kaiduo=0;
-			kaikong=0;
-			pingduo=0;
-			pingkong=0;
-			chiduo=A_BuyPosition(); 
-			chikong=A_SellPosition();
-			opencount = A_GetOpenOrderCount();
-			outer_count = Value(GetTBProfileString("Outer_"+totalsign,"total"));
-			
-			NumericArrayClear(openaccountbuy);
-			NumericArrayClear(openaccountsell);
-			
-			
-			FileAppend(outputfilename,"chiduo:"+Text(chiduo));
-			FileAppend(outputfilename,"chikong:"+Text(chikong));
-			FileAppend(outputfilename,"opencount:"+Text(opencount));
-	
-	}
-	
-	///////////////////////////////
-	// End of the Day 
-	///////////////////////////////
-	
-	if(BarStatus==2 && AccountDataExist){
-		If((timeholder>=0.145950 && timeholder<=0.150000)){
-				FileAppend(outputfilename,"----------Entering end of the day----------");
-				tmp_totalnumber = Value(GetTBProfileString("Formal_"+totalsign,"total"));
-				If (tmp_totalnumber>0){
-					FileAppend(outputfilename,"count not zero: "+Text(tmp_totalnumber));
-					return;
-				}
-				
-				outer_count = Value(GetTBProfileString("Outer_"+totalsign,"total"));
-				
-				
-				SetTBProfileString("Formal_"+totalsign,"total", Text(opencount+outer_count));
-				
-				For i = 1 To opencount
-				{
-					orderquantity = 0;
-					nBorS = A_OpenOrderBuyOrSell(i);
-					nEorE = A_OpenOrderEntryOrExit(i);
-					orderprice = A_OpenOrderPrice(i);
-					orderquantity = A_OpenOrderLot(i);
-					If (nBorS == Enum_Buy() && nEorE==Enum_Entry()){
-						skw_continue_record_openaccount(pinzhong, "kd", orderquantity, orderprice, i, "Formal_");
-					}Else If(nBorS==Enum_Sell()&& nEorE==Enum_Entry()){
-						skw_continue_record_openaccount(pinzhong, "kk", orderquantity, orderprice, i, "Formal_");
-					}Else If(nBorS==Enum_Buy()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
-						skw_continue_record_openaccount(pinzhong, "pk", orderquantity, orderprice, i, "Formal_");
-					}Else If(nBorS==Enum_Sell()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
-						skw_continue_record_openaccount(pinzhong, "pd", orderquantity, orderprice, i, "Formal_");
-					}
-				}
-				
-				For i = 1 To outer_count
-				{
-					skw_continue_restore_account(pinzhong, restore_type, restore_quantity,restore_price,i, "Outer_");
-					skw_continue_record_openaccount(pinzhong, restore_type, restore_quantity, restore_price, opencount+i, "Formal_");
-				}
-				FileAppend(outputfilename,"Total Count: "+Text(opencount+outer_count)+"\nOpencount: "+Text(opencount)+"\nOutercount: "+Text(outer_count));
-				
-				
-				return;
-			}
-	
-	}
 	
 	///////////////////////////////
 	// Normal Trading
 	///////////////////////////////
-	
 	
 	if(BarStatus==2 && AccountDataExist){
 			FileAppend(outputfilename,"----------- Enter Normal Trading -----------");
@@ -357,203 +321,134 @@ Begin
 			pingkong=0;
 			chiduo=A_BuyPosition(); 
 			chikong=A_SellPosition();
-			opencount = A_GetOpenOrderCount();
-			outer_count = Value(GetTBProfileString("Outer_"+totalsign,"total"));
-			
-			
 			NumericArrayClear(openaccountbuy);
 			NumericArrayClear(openaccountsell);
-			
-			max_open_buy = 0;
-			min_open_sell = 10000000;
-			
-			tmp_totalnumber = Value(GetTBProfileString("Formal_"+totalsign,"total"));
-			
-			If (tmp_totalnumber>0){
-				FileAppend(outputfilename,"Error: not properly initialized: "+Text(tmp_totalnumber));
-				return;
+			opencount = A_GetOpenOrderCount();
+
+			For i = 1 To opencount{
+				remain =0;
+				nBorS = A_OpenOrderBuyOrSell(i);
+				nEorE = A_OpenOrderEntryOrExit(i);
+				orderprice = A_OpenOrderPrice(i);
+				remain = A_OpenOrderLot(i);
+				If (nBorS == Enum_Buy() && nEorE==Enum_Entry()){
+					kaiduo = kaiduo+remain;
+					NumericArrayInsert(openaccountbuy, 0, orderprice);
+					
+				}Else If(nBorS==Enum_Sell()&& nEorE==Enum_Entry() ){
+					kaikong = kaikong+remain;
+					NumericArrayInsert(openaccountsell, 0, orderprice);
+					
+				}Else If(nBorS==Enum_Buy()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
+					pingkong = pingkong+remain;
+					NumericArrayInsert(openaccountbuy, 0, orderprice);
+					
+				}Else If(nBorS==Enum_Sell()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
+					pingduo = pingduo+remain;
+					NumericArrayInsert(openaccountsell, 0, orderprice);
+					
+				}
 			}
-	
-			For i = 1 To opencount
-				{
-					remain =0;
-					nBorS = A_OpenOrderBuyOrSell(i);
-					nEorE = A_OpenOrderEntryOrExit(i);
-					orderprice = A_OpenOrderPrice(i);
-					remain = A_OpenOrderLot(i);
-					If (nBorS == Enum_Buy() && nEorE==Enum_Entry()){
-						kaiduo = kaiduo+remain;
-						NumericArrayInsert(openaccountbuy, 0, orderprice);
-						If (orderprice>max_open_buy){
-							max_open_buy = orderprice;
-						}
-						
-						
-					}Else If(nBorS==Enum_Sell()&& nEorE==Enum_Entry() ){
-						kaikong = kaikong+remain;
-						NumericArrayInsert(openaccountsell, 0, orderprice);
-						If (orderprice<min_open_sell){
-							min_open_sell = orderprice;
-						}
-						
-						
-					}Else If(nBorS==Enum_Buy()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
-						pingkong = pingkong+remain;
-						NumericArrayInsert(openaccountbuy, 0, orderprice);
-						If (orderprice>max_open_buy){
-							max_open_buy = orderprice;
-						}
-						
-					}Else If(nBorS==Enum_Sell()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
-						pingduo = pingduo+remain;
-						NumericArrayInsert(openaccountsell, 0, orderprice);
-						If (orderprice<min_open_sell){
-							min_open_sell = orderprice;
-						}
-						
-					}
+			
+			outer_count = Value(GetTBProfileString(totalsign,"total"));
+			FileAppend(outputfilename,"total Number: normaltrade1   "+GetTBProfileString(totalsign,"total"));
+			For i = 1 To outer_count{
+				restore_type = GetTBProfileString(pinzhong + "_" + Text(i),"type");
+				restore_price = Value(GetTBProfileString(pinzhong + "_" + Text(i),"price"));
+				restore_quantity = Value(GetTBProfileString(pinzhong + "_" + Text(i),"quantity"));
+			
+				If(Exact(restore_type,"kd")==True){
+					kaiduo = kaiduo+restore_quantity;
+					NumericArrayInsert(openaccountbuy, 0, restore_price);
+					
+					
+				}Else If(Exact(restore_type,"kk")==True){
+					kaikong = kaikong+restore_quantity;
+					NumericArrayInsert(openaccountsell, 0, restore_price);
+					
+					
+				}Else If(Exact(restore_type,"pk")==True){
+					pingkong = pingkong+restore_quantity;
+					NumericArrayInsert(openaccountbuy, 0, restore_price);
+					
+					
+				}Else If(Exact(restore_type,"pd")==True){
+					pingduo = pingduo+restore_quantity;
+					NumericArrayInsert(openaccountsell, 0, restore_price);
+					
 				}
-			
-			
-			
-			tmp_outer_count = Value(GetTBProfileString("Outer_"+totalsign,"total"));
-			For i = 1 To tmp_outer_count
-				{
-					skw_continue_restore_account(pinzhong, restore_type, restore_quantity,restore_price,i, "Outer_");
-				
-					orderprice = restore_price;
-					remain = restore_quantity;
-					If(Exact(restore_type,"kd")==True){
-						kaiduo = kaiduo+remain;
-						NumericArrayInsert(openaccountbuy, 0, orderprice);
-						
-						
-					}Else If(Exact(restore_type,"kk")==True){
-						kaikong = kaikong+remain;
-						NumericArrayInsert(openaccountsell, 0, orderprice);
-						
-						
-					}Else If(Exact(restore_type,"pk")==True){
-						pingkong = pingkong+remain;
-						NumericArrayInsert(openaccountbuy, 0, orderprice);
-						
-						
-					}Else If(Exact(restore_type,"pd")==True){
-						pingduo = pingduo+remain;
-						NumericArrayInsert(openaccountsell, 0, orderprice);
-						
-					}
-				}
-			
-			
-			
-			
-			
-			 
+			}
+	 
 			duokongminus = chiduo-chikong;
-			
-			
-			
 			duokongminus_param = Floor(Abs(duokongminus/slots)/2,1);
 			if (duokongminus_param < 0){
 				duokongminus_param = 0;
 			}
 			
-			
-			FileAppend(outputfilename,"kaiduo:"+Text(kaiduo));
-			FileAppend(outputfilename,"kaikong:"+Text(kaikong));
-			FileAppend(outputfilename,"pingduo:"+Text(pingduo));
-			FileAppend(outputfilename,"pingkong:"+Text(pingkong));
-			
 			filestringbuy = "buy forbid: "+skw_formal_array2text(openaccountbuy);
 			filestringsell = "sell forbid: "+skw_formal_array2text(openaccountsell);
-			
 			FileAppend(outputfilename,filestringbuy);
 			FileAppend(outputfilename,filestringsell);
-			
-			
-			
-			stage = -1;
 			
 			
 			SetGlobalVar(globalstage, 0);
 			stage = 0;
 			
-			
-			
 			If(Min((chiduo-pingduo),(chikong-pingkong))>=1){ 
 				SetGlobalVar(globalstage, 1);
 				stage = 1;
-				
 			}
 			
 			FileAppend(outputfilename,"I am on Stage: "+ Text(stage));
 			
-			If(stage==-1){
-				SetGlobalVar(globalstage, -1);
+			
+			currentAsk = Q_AskPrice();
+			currentBid = Q_BidPrice();
+
+			
+			If((duokongminus/slots)>0){
+				sellprice = Floor(currentBid/step, 1)*step;
+				buyprice = sellprice-step*(duokongminus_param+1);
+			} 
+			If((duokongminus/slots)<0){
+				buyprice = Ceiling(currentAsk/step, 1)*step;
+				sellprice = buyprice+step*(duokongminus_param+1);
+			}
+			If((duokongminus/slots)==0){
+				sellprice = Ceiling(currentAsk/step, 1)*step;
+				buyprice = Floor(currentBid/step, 1)*step;
+			}
+			
+
+			priceinsell = skw_formal_numerinarray(openaccountsell, sellprice, step, -1, 1);
+			priceinbuy = skw_formal_numerinarray(openaccountbuy, buyprice,step, -1, 1);
+			
+			FileAppend(outputfilename,"proposed sell "+ Text(sellprice));
+			FileAppend(outputfilename,"proposed buy "+ Text(buyprice));
+			if(sellprice <= buyprice){
+				return;
+			}
+			If( (sellprice*1000)%(step*1000)!=0
+				|| (buyprice*1000)%(step*1000)!=0){
+				FileAppend(outputfilename,"current sell price not on edge");
 				return;
 			}
 			
-			 
+			If(priceinsell==True){
+				FileAppend(outputfilename,"current sell price "+Text(sellprice)+" conflict, can not sell");
+				return;
+			}
+			If(priceinbuy==True){
+				FileAppend(outputfilename,"current buy price "+Text(buyprice)+" conflict, can not buy");
+				return;
+			}
 			
-			If(stage==0 && GetGlobalVar(globalstage)==0){
+			today_lowerlimit = Q_LowerLimit();
+			today_upperlimit = Q_UpperLimit(); 
 			
-				
-				
-				currentAsk = Q_AskPrice();
-				currentBid = Q_BidPrice();
-	
-				
-				If((duokongminus/slots)>0){
-					//sellprice = currentBid;
-					sellprice = Floor(currentBid/step, 1)*step;
-					buyprice = sellprice-step*(duokongminus_param+1);
-				} 
-				If((duokongminus/slots)<0){
-					//buyprice = currentAsk;
-					buyprice = Ceiling(currentAsk/step, 1)*step;
-					sellprice = buyprice+step*(duokongminus_param+1);
-				}
-				If((duokongminus/slots)==0){
-					
-					sellprice = Ceiling(currentAsk/step, 1)*step;
-					buyprice = Floor(currentBid/step, 1)*step;
-				}
-				
-	
-				priceinsell = skw_formal_numerinarray(openaccountsell, sellprice, step, -1, 1);
-				priceinbuy = skw_formal_numerinarray(openaccountbuy, buyprice,step, -1, 1);
-				
-				FileAppend(outputfilename,"proposed sell "+ Text(sellprice));
-				FileAppend(outputfilename,"proposed buy "+ Text(buyprice));
-				if(sellprice <= buyprice){
-					return;
-				}
-				If( (sellprice*100)%(step*100)!=0
-					|| (buyprice*100)%(step*100)!=0){
-					FileAppend(outputfilename,"current sell price not on edge");
-					return;
-				}
-	
-				today_lowerlimit = Q_LowerLimit();
-				today_upperlimit = Q_UpperLimit(); 
-				
-				
-				If(priceinsell==True){
-					FileAppend(outputfilename,"current sell price "+Text(sellprice)+" conflict, can not sell");
-					return;
-				}
-				If(priceinbuy==True){
-					FileAppend(outputfilename,"current buy price "+Text(buyprice)+" conflict, can not buy");
-					return;
-				}
-				
-					
-				
-				
-				
-				
-				
+			
+			If(stage==0 && GetGlobalVar(globalstage)==0){		
+		
 				If( buyprice>0  
 					&& sellprice>buyprice
 					&& CurrentBar > GetGlobalVar(latestkaiduo)
@@ -567,24 +462,36 @@ Begin
 							return;
 						}
 						
-						outer_count = Value(GetTBProfileString("outer_"+totalsign,"total"));
+						outer_count = Value(GetTBProfileString(totalsign,"total"));
+						FileAppend(outputfilename,"total Number: normaltrade2    "+GetTBProfileString(totalsign,"total"));
 						
 						If(buyprice<today_lowerlimit || buyprice>today_upperlimit){
 							outer_count = outer_count+1;
-							skw_continue_record_openaccount(pinzhong, "kd", slots, buyprice, outer_count, "outer_");
-							SetTBProfileString("outer_"+totalsign,"total", Text(outer_count));
+							SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "kd");
+							SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
+							SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(buyprice)); 
+							
+							SetTBProfileString(totalsign,"total", Text(outer_count));
+							FileAppend(outputfilename,"total Number: normaltrade3    "+GetTBProfileString(totalsign,"total"));
 							
 						}Else{
-							A_SendOrder(Enum_Buy,Enum_Entry,slots,buyprice);
+							If(realbuy==True){
+								A_SendOrder(Enum_Buy,Enum_Entry,slots,buyprice);
+							}
 						}
 						SetGlobalVar(latestkaiduo, CurrentBar);
 						
 						If(sellprice<today_lowerlimit || sellprice>today_upperlimit){
 							outer_count = outer_count+1;
-							skw_continue_record_openaccount(pinzhong, "kk", slots, buyprice, outer_count, "outer_");
-							SetTBProfileString("outer_"+totalsign,"total", Text(outer_count));
+							SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "kk");
+							SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
+							SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(sellprice)); 
+							SetTBProfileString(totalsign,"total", Text(outer_count));
+							FileAppend(outputfilename,"total Number: normaltrade4    "+GetTBProfileString(totalsign,"total"));
 						}Else{
-							A_SendOrder(Enum_Sell, Enum_Entry, slots, sellprice);
+							If(realbuy==True){
+								A_SendOrder(Enum_Sell, Enum_Entry, slots, sellprice);
+							}
 						}
 						SetGlobalVar(latestkaikong, CurrentBar);
 				}
@@ -596,57 +503,6 @@ Begin
 				If(keping<=0){
 					return;
 				}
-				currentAsk = Q_AskPrice();
-				currentBid = Q_BidPrice();
-				
-				
-				If((duokongminus/slots) >= 0){
-					//sellprice = currentBid;
-					sellprice = Floor(currentBid/step, 1)*step;
-					buyprice = sellprice-step*(duokongminus_param+1);
-				} 
-				If((duokongminus/slots) <= 0){
-					//buyprice = currentAsk;
-					buyprice = Ceiling(currentAsk/step, 1)*step;
-					sellprice = buyprice+step*(duokongminus_param+1);
-				}
-				If((duokongminus/slots)==0){
-					
-					sellprice = Ceiling(currentAsk/step, 1)*step;
-					buyprice = Floor(currentBid/step, 1)*step;
-				}
-				
-				
-				FileAppend(outputfilename,"proposed sell "+ Text(sellprice));
-				FileAppend(outputfilename,"proposed buy "+ Text(buyprice));
-				if(sellprice <= buyprice){
-					return;
-				}
-				
-				If( (sellprice*100)%(step*100)!=0
-					|| (buyprice*100)%(step*100)!=0){
-					FileAppend(outputfilename,"current sell price not on edge");
-					return;
-				}
-				
-				today_lowerlimit = Q_LowerLimit(); 
-				today_upperlimit = Q_UpperLimit(); 
-				
-				
-	
-				priceinsell = skw_formal_numerinarray(openaccountsell, sellprice, step, -1, 1);
-				priceinbuy = skw_formal_numerinarray(openaccountbuy, buyprice,step, -1, 1);
-				
-				
-				If(priceinsell==True){
-					FileAppend(outputfilename,"current sell price "+Text(sellprice)+" conflict, can not sell");
-					return;
-				}
-				If(priceinbuy==True){
-					FileAppend(outputfilename,"current buy price "+Text(buyprice)+" conflict, can not buy");
-					return;
-				}
-				
 				
 				If(keping>0 
 					&& sellprice>buyprice 
@@ -657,21 +513,31 @@ Begin
 					&& CurrentBar > GetGlobalVar(latestpingkong)
 					){
 						If(GetGlobalVar(kepingposi)==keping){
-							If(buyprice<today_lowerlimit || buyprice>today_upperlimit){
-								outer_count = outer_count+1;
-								skw_continue_record_openaccount(pinzhong, "pd", slots, buyprice, outer_count, "outer_");
-								SetTBProfileString("outer_"+totalsign,"total", Text(outer_count));
-								
-							}Else{
-								A_SendOrder(Enum_Sell, Enum_Exit,Min(keping,slots), sellprice);
-							}
-							SetGlobalVar(latestpingduo, CurrentBar);
 							If(sellprice<today_lowerlimit || sellprice>today_upperlimit){
 								outer_count = outer_count+1;
-								skw_continue_record_openaccount(pinzhong, "pk", slots, buyprice, outer_count, "outer_");
-								SetTBProfileString("outer_"+totalsign,"total", Text(outer_count));
+								SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "pd");
+								SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
+								SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(sellprice)); 
+								SetTBProfileString(totalsign,"total", Text(outer_count));
+								FileAppend(outputfilename,"total Number: normaltrade5    "+GetTBProfileString(totalsign,"total"));
+								
 							}Else{
-								A_SendOrder(Enum_Buy,Enum_Exit,Min(keping,slots), buyprice);
+								If(realbuy==True){
+									A_SendOrder(Enum_Sell, Enum_Exit,Min(keping,slots), sellprice);
+								}
+							}
+							SetGlobalVar(latestpingduo, CurrentBar);
+							If(buyprice<today_lowerlimit || buyprice>today_upperlimit){
+								outer_count = outer_count+1;
+								SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "pk");
+								SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
+								SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(buyprice)); 
+								SetTBProfileString(totalsign,"total", Text(outer_count));
+								FileAppend(outputfilename,"total Number: normaltrade6    "+GetTBProfileString(totalsign,"total"));
+							}Else{
+								If(realbuy==True){
+									A_SendOrder(Enum_Buy,Enum_Exit,Min(keping,slots), buyprice);
+								}
 							}
 							SetGlobalVar(latestpingkong, CurrentBar);
 							SetGlobalVar(kepingposi, 0);
@@ -681,7 +547,6 @@ Begin
 					
 				}
 			}
-			
 	
 	}
 	 
