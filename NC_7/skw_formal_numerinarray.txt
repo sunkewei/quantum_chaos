@@ -1,0 +1,42 @@
+//------------------------------------------------------------------------
+// 简称: skw_formal_numerinarray
+// 名称: skw_formal_numerinarray
+// 类别: 用户函数
+// 类型: 用户函数
+// 输出: 布尔型
+//------------------------------------------------------------------------
+Params
+	NumericArrayRef buysellarray;
+	Numeric number;
+	Numeric step;
+	Numeric lowlimit;
+	Numeric highlimit;
+	
+Vars
+	Numeric i;
+	Numeric size;
+Begin
+	size =  GetNumericArraySize(buysellarray);
+	for  i = 0 To size 
+    {
+    	/*If(number==buysellarray[i]){
+			return True;
+		}*/
+		
+		If(number>(buysellarray[i]+lowlimit*step)
+			&& number<(buysellarray[i]+highlimit*step)
+		  ){
+			return True;
+		}
+    }
+	
+	
+	Return False;
+End
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2017/03/20 12:52:59
+// 版权所有	timecompression
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------

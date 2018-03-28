@@ -1,0 +1,157 @@
+/*  **************************************
+ * Nuclear Version 8.0
+ @ Dependency
+ skw_formal_array2text
+ skw_formal_numerinarray
+ skw_steps_calc
+ 
+ ******************************************/
+
+ Vars
+	
+	String	pinzhong;
+	String step_sign;
+	Numeric timeholder;
+	
+	NumericSeries last_close;
+	
+	NumericSeries day_step;
+	NumericSeries day_step_avg;
+	Numeric bias_decision(0);
+	
+	NumericSeries ma_short;
+	NumericSeries ma_middle;
+	NumericSeries ma_long;
+	
+	NumericSeries last_close_ma_short;
+	NumericSeries last_close_ma_middle;
+	NumericSeries last_close_ma_long;
+	
+	NumericSeries shun_sign(0);
+	
+	
+	Numeric recent_step_total;
+	Numeric step_factor;
+	
+	NumericSeries period_low_long;
+	NumericSeries period_high_long;
+	NumericSeries period_low_middle;
+	NumericSeries period_high_middle;
+	NumericSeries period_low_short;
+	NumericSeries period_high_short;
+	NumericSeries period_posi_long;
+	NumericSeries period_posi_middle;
+	NumericSeries period_posi_short;
+	NumericSeries period_posi_avg;
+	Numeric period_decide;
+	
+	Numeric step_decision; 
+
+	
+	
+	  
+Begin
+	
+	pinzhong = Symbol();	
+	step_sign = pinzhong+"_steps";
+	
+	last_close = (high[1]+low[1]+close[1])/3;
+	
+	
+	timeholder = CurrentTime();
+	//FileAppend(outputfilename,"======================"+Text(CurrentTime)+"=============================");
+	
+	
+	
+	////////////////////////////////////
+	// calculate bias
+	///////////////////////////////////
+	
+	ma_short = WAverage(last_close, 4);
+	ma_middle = WAverage(last_close, 8);
+	ma_long = WAverage(last_close, 16);
+	
+	last_close_ma_short = LinearRegValue(ma_short, 4, 0);
+	last_close_ma_middle = LinearRegValue(ma_middle, 4, 0);
+	last_close_ma_long = LinearRegValue(ma_long, 4, 0);
+	
+	period_high_long = Highest(last_close, 32);
+	period_low_long = Lowest(last_close, 32);
+	period_posi_long = (last_close-period_low_long[6])*100/(period_high_long[6] - period_low_long[6]);
+	
+	period_high_middle = Highest(last_close, 16);
+	period_low_middle = Lowest(last_close, 16);
+	period_posi_middle = (last_close-period_low_middle[3])*100/(period_high_middle[3] - period_low_middle[3]);
+	
+	
+	period_high_short = Highest(last_close, 8);
+	period_low_short = Lowest(last_close, 8);
+	period_posi_short = (last_close-period_low_short[1])*100/(period_high_short[1] - period_low_short[1]);
+	
+	period_posi_avg = period_posi_long*0.5+period_posi_middle*0.3+period_posi_short*0.2;
+	period_decide = Round(period_posi_avg[1]*0.382 +period_posi_avg*0.618, 0);
+	
+	If(
+		last_close > last_close_ma_middle
+		and last_close_ma_short > last_close_ma_middle 
+		and last_close_ma_middle > last_close_ma_long 
+		and period_posi_avg > 100
+		){
+			shun_sign = 1;
+		}Else If(
+			last_close < last_close_ma_middle
+			and last_close_ma_short < last_close_ma_middle  
+			and last_close_ma_middle < last_close_ma_long 
+			and period_posi_avg < 0			
+			){
+			shun_sign = -1;
+		}Else{
+			shun_sign = 0;
+		}
+		
+	
+	
+	bias_decision = shun_sign;
+	
+
+	
+	
+	SetTBProfileString(step_sign,"bias", Text(bias_decision));
+	
+	
+	////////////////////////////////////
+	// calculate steps
+	///////////////////////////////////
+	
+	day_step = Abs(high - low);
+	day_step_avg = Floor(Highest(day_step, 3), 1);
+	recent_step_total = Floor((Highest(high, 3) - Lowest(low, 3))/3, 1);
+	step_factor = recent_step_total/day_step_avg +1;
+	
+	step_decision = Floor(day_step_avg * step_factor, 1);
+	
+	SetTBProfileString(step_sign,"step", Text(step_decision));
+	
+	PlotString("daystep", Text(step_decision), high, white);
+	PlotNumeric("mashort", last_close_ma_short);
+	PlotNumeric("mamiddle", last_close_ma_middle);
+	PlotNumeric("malong", last_close_ma_long);
+	If(bias_decision==1){
+		PlotBool("bias", True, low);
+	}
+	If(bias_decision==-1){
+		PlotBool("bias", False, low);
+	}
+	
+	
+	//
+	
+End
+
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2016/08/01 11:33:20
+// 版权所有	straightup
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------

@@ -1,0 +1,48 @@
+//------------------------------------------------------------------------
+// 简称: skw_formal_array2text
+// 名称: skw_formal_array2text
+// 类别: 用户函数
+// 类型: 用户函数
+// 输出: 字符串
+//------------------------------------------------------------------------
+
+Params
+	NumericArrayRef array;
+	
+Vars
+	Numeric i;
+	Numeric number;
+	String result;
+Begin
+	result = "";
+	number = 0;
+	number = GetNumericArraySize(array);
+	result = Text(number)+"\t";
+	
+	result = result+Text(array[0])+"\t";
+	result = result+Text(array[1])+"\t";
+	result = result+Text(array[2])+"\t";
+	result = result+Text(array[3])+"\t";
+	result = result+Text(array[4])+"\t";
+	result = result+Text(array[5])+"\t";
+	result = result+Text(array[6])+"\t";
+	result = result+Text(array[7])+"\t";
+	result = result+Text(array[8])+"\t";
+	result = result+Text(array[9])+"\t";
+	result = result+Text(array[10])+"\t";
+	/*result = result+Text(array[11])+"\t";
+	result = result+Text(array[12])+"\t";
+	result = result+Text(array[13])+"\t";
+	result = result+Text(array[14])+"\t";
+	result = result+Text(array[15])+"\t";*/
+    
+	Return result;
+End
+
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2017/03/10 12:47:36
+// 版权所有	timecompression
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------
