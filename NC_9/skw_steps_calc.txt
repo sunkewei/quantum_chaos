@@ -124,11 +124,11 @@ Begin
 	///////////////////////////////////
 	
 	day_step = Abs(high - low);
-	day_step_avg = Floor(Highest(day_step, 3), 1);
+	day_step_avg = Floor(NthHigher(day_step, 3), 2)+1;
 	recent_step_total = Floor((Highest(high, 3) - Lowest(low, 3))/3, 1);
 	step_factor = recent_step_total/day_step_avg +1;
 	
-	step_decision = Floor(day_step_avg * step_factor, 1);
+	step_decision = Floor(day_step_avg * step_factor*0.618, 1);
 	
 	SetTBProfileString(step_sign,"step", Text(step_decision));
 	
