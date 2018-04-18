@@ -7,7 +7,7 @@
  
  ******************************************/
 
-Params
+Params 
 	Numeric slots(1);
     Numeric step_base(3);
 
@@ -98,6 +98,7 @@ Vars
 	Numeric plot_value;
 	Numeric tailered_sell_size;
 	Numeric tailered_buy_size;
+	String conflict_str;
 	
 	
 	
@@ -120,7 +121,7 @@ Begin
 	step_value = Value(GetTBProfileString(step_sign,"step"));
 	step_value = Round(step_value/step_base, 0)*step_base;
 	
-	step = Max(step_base, step_value) ;
+	step = Min(Max(step_base, step_value), step_base*3) ;
 	bias_value = Value(GetTBProfileString(step_sign,"bias"));
 	timeholder = CurrentTime();
 	
@@ -165,6 +166,8 @@ Begin
 		today_upperlimit = Q_UpperLimit(); 
 		currentAsk = Q_AskPrice();
 		currentBid = Q_BidPrice();
+		//FileAppend(outputfilename,"Today Buy: "+ Text(A_TodayBuyPosition()));
+		//FileAppend(outputfilename,"Today Sell: "+ Text(A_TodaySellPosition()));
 		
 		If(!(today_lowerlimit > 0 && today_upperlimit > 0 && currentAsk > 0 && currentBid > 0 ) ){
 			FileAppend(outputfilename,"----------account not on, no trading----------");
@@ -246,22 +249,30 @@ Begin
 		NumericArraySort(openaccountbuy, False);
 		NumericArraySort(openaccountsell, True);
 		
+		currentAsk = Q_AskPrice();
+		currentBid = Q_BidPrice();
 		
-		tailered_buy_size = Min(GetNumericArraySize(openaccountbuy), 3);
-		tailered_sell_size =  Min(GetNumericArraySize(openaccountsell), 3);
+		tailered_buy_size = GetNumericArraySize(openaccountbuy);
+		tailered_sell_size =  GetNumericArraySize(openaccountsell);
 		
 		outer_count = 0;
 		For i = 1 To tailered_buy_size{
-			outer_count = outer_count +1;
-			SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "b");
-			SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
-			SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(openaccountbuy[i-1])); 
+			tmp_restore_price = openaccountbuy[i-1];
+			if(i<=6 || tmp_restore_price >= currentBid - 3*step){
+				outer_count = outer_count +1;
+				SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "b");
+				SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
+				SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(openaccountbuy[i-1])); 
+			}
 		}
 		For i = 1 To tailered_sell_size{
-			outer_count = outer_count +1;
-			SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "s");
-			SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
-			SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(openaccountsell[i-1])); 
+			tmp_restore_price = openaccountsell[i-1];
+			if(i<=6 || tmp_restore_price <= currentBid + 3*step){
+				outer_count = outer_count +1;
+				SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "s");
+				SetTBProfileString(pinzhong + "_" + Text(outer_count),"quantity", Text(slots));
+				SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(openaccountsell[i-1])); 
+			}
 		}
 		SetTBProfileString(totalsign,"total", Text(outer_count));
 		totalnumber = outer_count;
@@ -278,8 +289,7 @@ Begin
 		step_value = Value(GetTBProfileString(step_sign,"step"));
 		step_value = Round(step_value/step_base, 0)*step_base;
 		step = Max(step_base, step_value) ;
-		FileAppend(outputfilename,"step: "+ Text(step));
-		FileAppend(outputfilename,"bias: "+ Text(bias_value));
+		FileAppend(outputfilename,"step: "+ Text(step) + "\tbias: "+ Text(bias_value));
 		
 		If(totalnumber>0){
 			outer_count = 0;
@@ -296,6 +306,10 @@ Begin
 						outer_flag = True;
 					}Else{
 						If(bias_value == -1){
+							
+							outer_flag = False;
+							FileAppend(outputfilename,"bais is -1, cancelled "+Text(restore_price));
+							/*
 							// nudge and change restore price to lower available place
 							tmp_restore_price = Floor(currentBid, step_base);
 							while (tmp_restore_price > 0){
@@ -311,6 +325,7 @@ Begin
 							If(tmp_restore_price > 0){
 								outer_flag = True;
 							}
+							*/
 						}Else{
 							avoid_duplicated_restore_price = restore_price - step;
 							occupied_flag = skw_formal_array_functions("contains", openaccountbuy, avoid_duplicated_restore_price);
@@ -333,7 +348,11 @@ Begin
 									FileAppend(outputfilename,"perform trade: ++ pingkong\t"+Text(restore_quantity)+"\t"+Text(restore_price));
 									FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t++ pingkong\t"+Text(restore_quantity)+"\t"+Text(currentBid));
 									If(realbuy==True){
-										A_SendOrder(Enum_Buy,Enum_Exit,restore_quantity, restore_price);
+										If(A_TodaySellPosition==0){
+											A_SendOrder(Enum_Buy,Enum_Exit,restore_quantity, restore_price);
+										}Else{
+											A_SendOrder(Enum_Buy,Enum_ExitToday,restore_quantity, restore_price);
+										}
 										SetGlobalVar(latestoperation, CurrentBar);
 									}
 								}Else{
@@ -354,6 +373,9 @@ Begin
 						// nudge and change restore price to higher available place
 						If(bias_value == 1){
 						
+							outer_flag = False;
+							FileAppend(outputfilename,"bais is 1, cancelled "+Text(restore_price));
+							/*
 							tmp_restore_price = Ceiling(currentAsk,step_base);
 							sell_array_max = skw_formal_array_functions("max",openaccountsell, 0);
 							while (tmp_restore_price <= sell_array_max + 10*step_base){
@@ -369,6 +391,7 @@ Begin
 							If(tmp_restore_price > 0){
 								outer_flag = True;
 							}
+							*/
 						
 						}Else{
 							avoid_duplicated_restore_price = restore_price + step;
@@ -391,7 +414,11 @@ Begin
 									FileAppend(outputfilename,"perform trade: -- pingduo\t"+Text(restore_quantity)+"\t"+Text(restore_price));
 									FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t-- pingduo\t"+Text(restore_quantity)+"\t"+Text(currentAsk));
 									If(realbuy==True){
-										A_SendOrder(Enum_Sell, Enum_Exit,restore_quantity, restore_price);
+										If(A_TodayBuyPosition==0){
+											A_SendOrder(Enum_Sell, Enum_Exit,restore_quantity, restore_price);
+										}Else{
+											A_SendOrder(Enum_Sell, Enum_ExitToday,restore_quantity, restore_price);
+										}
 										SetGlobalVar(latestoperation, CurrentBar);
 									}
 								}Else{
@@ -411,7 +438,7 @@ Begin
 			}
 			
 			SetTBProfileString(totalsign,"total", Text(outer_count));
-			FileAppend(outputfilename,"Outer Size: "+Text(outer_count));
+			
 			
 		}
 
@@ -483,8 +510,8 @@ Begin
 			
 			NumericArraySort(openaccountbuy, False);
 			NumericArraySort(openaccountsell, True);
-			skw_formal_print_array(outputfilename, "sell forbid", openaccountsell);
-			skw_formal_print_array(outputfilename, "buy forbid", openaccountbuy);
+			//skw_formal_print_array(outputfilename, "sell forbid", openaccountsell);
+			//skw_formal_print_array(outputfilename, "buy forbid", openaccountbuy);
 			
 			
 			step_value = Value(GetTBProfileString(step_sign,"step"));
@@ -523,25 +550,32 @@ Begin
 
 			priceinsell = (skw_formal_array_functions("contains", openaccountsell, sellprice) == 1);
 			priceinbuy = (skw_formal_array_functions("contains", openaccountbuy, buyprice) == 1);
-			//priceinsell = skw_formal_numerinarray(openaccountsell, sellprice, step, -1, 1);
-			//priceinbuy = skw_formal_numerinarray(openaccountbuy, buyprice,step, -1, 1);
 			
-			FileAppend(outputfilename,"proposed sell "+ Text(sellprice));
-			FileAppend(outputfilename,"proposed buy "+ Text(buyprice));
 			
-			//PlotNumeric("p_sell", sellprice, 0, green, 0);
-			//PlotNumeric("p_buy", buyprice, 0, red, 0);
+			FileAppend(outputfilename,Text(currentAsk)+ "<--->" +Text(currentBid));
+			
+			
 			
 			if(sellprice <= buyprice){
 				return;
 			}
 			
-			If(priceinsell==True){
-				FileAppend(outputfilename,"current sell price "+Text(sellprice)+" conflict, can not sell");
-				return;
-			}
+			conflict_str = "";
 			If(priceinbuy==True){
-				FileAppend(outputfilename,"current buy price "+Text(buyprice)+" conflict, can not buy");
+				conflict_str = conflict_str + "(" + Text(buyprice) + ")";	
+			}Else{
+				conflict_str = conflict_str + Text(buyprice);	
+			}
+			conflict_str = conflict_str + "<--buy   sell-->";
+			If(priceinsell==True){
+				conflict_str = conflict_str + "(" + Text(sellprice) + ")";	
+			}Else{
+				conflict_str = conflict_str + Text(sellprice);	
+			}
+			
+			
+			FileAppend(outputfilename,conflict_str);
+			If(priceinsell || priceinbuy){
 				return;
 			}
 			

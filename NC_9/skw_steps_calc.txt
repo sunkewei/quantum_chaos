@@ -33,20 +33,24 @@
 	Numeric recent_step_total;
 	Numeric step_factor;
 	
-	NumericSeries period_low_long;
-	NumericSeries period_high_long;
-	NumericSeries period_low_middle;
-	NumericSeries period_high_middle;
-	NumericSeries period_low_short;
-	NumericSeries period_high_short;
-	NumericSeries period_posi_long;
-	NumericSeries period_posi_middle;
-	NumericSeries period_posi_short;
-	NumericSeries period_posi_avg;
-	Numeric period_decide;
+	
 	
 	Numeric step_decision; 
-
+	Numeric step_decision_short;
+	
+	
+	NumericSeries ma_adapt;
+	NumericSeries ma_adapt_diff;
+	Numeric ma_adapt_diff_avg;
+	
+	Numeric bias_score;
+	Numeric yesterday_increase;
+	NumericSeries span;
+	Numeric avg_span;
+	Numeric num_increase;
+	Numeric num_decrease;
+	Numeric max_num;
+	Numeric min_num;
 	
 	
 	  
@@ -56,6 +60,8 @@ Begin
 	step_sign = pinzhong+"_steps";
 	
 	last_close = (high[1]+low[1]+close[1])/3;
+	span = high[1] - low[1];
+	avg_span = Average(span, 30);
 	
 	
 	timeholder = CurrentTime();
@@ -71,44 +77,62 @@ Begin
 	ma_middle = WAverage(last_close, 8);
 	ma_long = WAverage(last_close, 16);
 	
+	
 	last_close_ma_short = LinearRegValue(ma_short, 4, 0);
 	last_close_ma_middle = LinearRegValue(ma_middle, 4, 0);
 	last_close_ma_long = LinearRegValue(ma_long, 4, 0);
 	
-	period_high_long = Highest(last_close, 32);
-	period_low_long = Lowest(last_close, 32);
-	period_posi_long = (last_close-period_low_long[6])*100/(period_high_long[6] - period_low_long[6]);
 	
-	period_high_middle = Highest(last_close, 16);
-	period_low_middle = Lowest(last_close, 16);
-	period_posi_middle = (last_close-period_low_middle[3])*100/(period_high_middle[3] - period_low_middle[3]);
+	ma_adapt = AdaptiveMovAvg(last_close, 10, 2, 30); 
+	ma_adapt_diff  = ma_adapt-ma_adapt[1];
+	ma_adapt_diff_avg = Average(ma_adapt_diff, 3);
 	
 	
-	period_high_short = Highest(last_close, 8);
-	period_low_short = Lowest(last_close, 8);
-	period_posi_short = (last_close-period_low_short[1])*100/(period_high_short[1] - period_low_short[1]);
 	
-	period_posi_avg = period_posi_long*0.5+period_posi_middle*0.3+period_posi_short*0.2;
-	period_decide = Round(period_posi_avg[1]*0.382 +period_posi_avg*0.618, 0);
 	
-	If(
-		last_close > last_close_ma_middle
-		and last_close_ma_short > last_close_ma_middle 
-		and last_close_ma_middle > last_close_ma_long 
-		and period_posi_avg > 100
-		){
-			shun_sign = 1;
-		}Else If(
-			last_close < last_close_ma_middle
-			and last_close_ma_short < last_close_ma_middle  
-			and last_close_ma_middle < last_close_ma_long 
-			and period_posi_avg < 0			
-			){
-			shun_sign = -1;
-		}Else{
-			shun_sign = 0;
-		}
-		
+	
+	bias_score = 0;
+	
+	
+	If(last_close > last_close_ma_middle){
+		bias_score = bias_score + 1;
+	}
+	If(last_close_ma_short > last_close_ma_middle){
+		bias_score = bias_score + 1;
+	}
+	If(last_close_ma_middle > last_close_ma_long){
+		bias_score = bias_score + 1;
+	}
+	
+	If(ma_adapt_diff_avg > avg_span*0.1){
+		bias_score = bias_score + 2;
+	}
+	
+	
+	If(last_close < last_close_ma_middle){
+		bias_score = bias_score - 1;
+	}
+	If(last_close_ma_short < last_close_ma_middle){
+		bias_score = bias_score - 1;
+	}
+	If(last_close_ma_middle < last_close_ma_long){
+		bias_score = bias_score - 1;
+	}
+	
+	If(ma_adapt_diff_avg < -1*avg_span*0.1){
+		bias_score = bias_score - 2;
+	}
+	
+	shun_sign = 0;
+	If(bias_score >= 4){
+		shun_sign = 1; 
+	}
+	If(bias_score <= -4){
+		shun_sign = -1;
+	}
+	
+	
+	
 	
 	
 	bias_decision = shun_sign;
@@ -122,20 +146,31 @@ Begin
 	////////////////////////////////////
 	// calculate steps
 	///////////////////////////////////
+
 	
-	day_step = Abs(high - low);
-	day_step_avg = Floor(NthHigher(day_step, 3), 2)+1;
-	recent_step_total = Floor((Highest(high, 3) - Lowest(low, 3))/3, 1);
-	step_factor = recent_step_total/day_step_avg +1;
 	
-	step_decision = Floor(day_step_avg * step_factor*0.618, 1);
+	
+	step_decision = Highest(last_close, 15) - Lowest(last_close, 15);
+	step_decision = step_decision / 3;
+	
+	step_decision_short = Highest(last_close, 5) - Lowest(last_close, 5);
+	step_decision_short = step_decision_short / 2;
+	
+	step_decision = step_decision*0.618 + step_decision_short*0.382;
+	
+	
+	
+	step_factor = Floor(ln(Average(Abs(ma_adapt_diff), 5) +2.71), 0.1);
+	step_decision = Floor(step_decision * step_factor, 1);
+	
 	
 	SetTBProfileString(step_sign,"step", Text(step_decision));
 	
-	PlotString("daystep", Text(step_decision), high, white);
+	PlotString("daystep", Text(step_decision), high, white); 
 	PlotNumeric("mashort", last_close_ma_short);
 	PlotNumeric("mamiddle", last_close_ma_middle);
 	PlotNumeric("malong", last_close_ma_long);
+	PlotNumeric("ma_adapt", ma_adapt);
 	If(bias_decision==1){
 		PlotBool("bias", True, low);
 	}
