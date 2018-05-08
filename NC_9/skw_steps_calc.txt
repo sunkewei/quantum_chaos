@@ -161,12 +161,12 @@ Begin
 	
 	
 	step_factor = Floor(ln(Average(Abs(ma_adapt_diff), 5) +2.71), 0.1);
-	step_decision = Floor(step_decision * step_factor, 1);
+	step_decision = Floor(step_decision * step_factor, 0.01);
 	
 	
 	SetTBProfileString(step_sign,"step", Text(step_decision));
 	
-	PlotString("daystep", Text(step_decision), high, white); 
+	PlotString("daystep", Text(Floor(step_decision,1)), high, white); 
 	PlotNumeric("mashort", last_close_ma_short);
 	PlotNumeric("mamiddle", last_close_ma_middle);
 	PlotNumeric("malong", last_close_ma_long);

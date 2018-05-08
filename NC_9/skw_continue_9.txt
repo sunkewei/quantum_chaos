@@ -121,7 +121,8 @@ Begin
 	step_value = Value(GetTBProfileString(step_sign,"step"));
 	step_value = Round(step_value/step_base, 0)*step_base;
 	
-	step = Min(Max(step_base, step_value), step_base*3) ;
+	//step = Min(Max(step_base, step_value), step_base*3) ;
+	step = Max(step_base, step_value);
 	bias_value = Value(GetTBProfileString(step_sign,"bias"));
 	timeholder = CurrentTime();
 	
