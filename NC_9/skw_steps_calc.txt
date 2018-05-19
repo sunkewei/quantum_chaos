@@ -51,6 +51,8 @@
 	Numeric num_decrease;
 	Numeric max_num;
 	Numeric min_num;
+	NumericSeries recent_highest;
+	NumericSeries recent_lowest;
 	
 	
 	  
@@ -59,9 +61,12 @@ Begin
 	pinzhong = Symbol();	
 	step_sign = pinzhong+"_steps";
 	
-	last_close = (high[1]+low[1]+close[1])/3;
-	span = high[1] - low[1];
-	avg_span = Average(span, 30);
+	//last_close = (high[1]+low[1]+close[1])/3;
+	last_close = (high + low )/2;
+	span = high - low;
+	avg_span = Average(span, 100);
+	recent_highest = Highest(close[1], 30);
+	recent_lowest = Lowest(close[1], 30);
 	
 	
 	timeholder = CurrentTime();
@@ -83,7 +88,7 @@ Begin
 	last_close_ma_long = LinearRegValue(ma_long, 4, 0);
 	
 	
-	ma_adapt = AdaptiveMovAvg(last_close, 10, 2, 30); 
+	ma_adapt = AdaptiveMovAvg(last_close, 15, 2, 30); 
 	ma_adapt_diff  = ma_adapt-ma_adapt[1];
 	ma_adapt_diff_avg = Average(ma_adapt_diff, 3);
 	
@@ -94,6 +99,9 @@ Begin
 	bias_score = 0;
 	
 	
+	If(last_close >= recent_highest[3]){
+		bias_score = bias_score + 1;
+	}
 	If(last_close > last_close_ma_middle){
 		bias_score = bias_score + 1;
 	}
@@ -104,11 +112,13 @@ Begin
 		bias_score = bias_score + 1;
 	}
 	
-	If(ma_adapt_diff_avg > avg_span*0.1){
+	If(ma_adapt_diff_avg > avg_span*0.075){
 		bias_score = bias_score + 2;
 	}
 	
-	
+	If(last_close <= recent_lowest[3]){
+		bias_score = bias_score - 1;
+	}
 	If(last_close < last_close_ma_middle){
 		bias_score = bias_score - 1;
 	}
@@ -119,15 +129,15 @@ Begin
 		bias_score = bias_score - 1;
 	}
 	
-	If(ma_adapt_diff_avg < -1*avg_span*0.1){
+	If(ma_adapt_diff_avg < -1*avg_span*0.075){
 		bias_score = bias_score - 2;
 	}
 	
 	shun_sign = 0;
-	If(bias_score >= 4){
+	If(bias_score >= 6){
 		shun_sign = 1; 
 	}
-	If(bias_score <= -4){
+	If(bias_score <= -6){
 		shun_sign = -1;
 	}
 	
@@ -156,7 +166,7 @@ Begin
 	step_decision_short = Highest(last_close, 5) - Lowest(last_close, 5);
 	step_decision_short = step_decision_short / 2;
 	
-	step_decision = step_decision*0.618 + step_decision_short*0.382;
+	step_decision = step_decision*0.382 + step_decision_short*0.618;
 	
 	
 	

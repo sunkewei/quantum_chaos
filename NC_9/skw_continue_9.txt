@@ -16,6 +16,7 @@ Vars
 	
 	Numeric step;
 	Numeric step_value;
+	Numeric step_factor;
 	String step_sign;
 	Numeric bias_value;
 	
@@ -119,10 +120,13 @@ Begin
 	step_sign = pinzhong+"_steps";
 	totalsign = pinzhong+"_total";
 	step_value = Value(GetTBProfileString(step_sign,"step"));
-	step_value = Round(step_value/step_base, 0)*step_base;
+	step_factor = Round(Log(step_value/step_base, 2), 0);
+	step_factor = Power(2, step_factor);
+	step_value = Round(step_factor, 0)*step_base;
 	
 	//step = Min(Max(step_base, step_value), step_base*3) ;
 	step = Max(step_base, step_value);
+	//PlotString("daystep", Text(Floor(step_factor,1)), high, white); 
 	bias_value = Value(GetTBProfileString(step_sign,"bias"));
 	timeholder = CurrentTime();
 	
@@ -287,9 +291,9 @@ Begin
 		
 		chiduo=A_BuyPosition(); 
 		chikong=A_SellPosition();
-		step_value = Value(GetTBProfileString(step_sign,"step"));
-		step_value = Round(step_value/step_base, 0)*step_base;
-		step = Max(step_base, step_value) ;
+		//step_value = Value(GetTBProfileString(step_sign,"step"));
+		//step_value = Round(step_value/step_base, 0)*step_base;
+		//step = Max(step_base, step_value) ;
 		FileAppend(outputfilename,"step: "+ Text(step) + "\tbias: "+ Text(bias_value));
 		
 		If(totalnumber>0){
@@ -515,10 +519,10 @@ Begin
 			//skw_formal_print_array(outputfilename, "buy forbid", openaccountbuy);
 			
 			
-			step_value = Value(GetTBProfileString(step_sign,"step"));
-			step_value = Round(step_value/step_base, 0)*step_base;
+			//step_value = Value(GetTBProfileString(step_sign,"step"));
+			//step_value = Round(step_value/step_base, 0)*step_base;
 			
-			step = Max(step_base, step_value) ;
+			//step = Max(step_base, step_value) ;
 			
 			 
 			currentAsk = Q_AskPrice();
