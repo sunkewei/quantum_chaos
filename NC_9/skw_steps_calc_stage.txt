@@ -1,0 +1,232 @@
+/*  **************************************
+ * Nuclear Version 8.0
+ @ Dependency
+ skw_formal_array2text
+ skw_formal_numerinarray
+ skw_steps_calc
+ 
+ ******************************************/
+
+ Vars
+	
+	String	pinzhong;
+	String step_sign;
+	Numeric timeholder;
+	
+	NumericSeries last_close;
+	
+	NumericSeries day_step;
+	NumericSeries day_step_avg;
+	NumericSeries bias_decision(0);
+	
+	NumericSeries ma_short;
+	NumericSeries ma_middle;
+	NumericSeries ma_long;
+	
+	NumericSeries last_close_ma_short;
+	NumericSeries last_close_ma_middle;
+	NumericSeries last_close_ma_long;
+	
+	NumericSeries shun_sign(0);
+	
+	
+	Numeric recent_step_total;
+	Numeric step_factor;
+	
+	
+	
+	Numeric step_decision; 
+	Numeric step_decision_short;
+	
+	
+	NumericSeries ma_adapt;
+	NumericSeries ma_adapt_diff;
+	Numeric ma_adapt_diff_avg;
+	
+	Numeric bias_score;
+	Numeric yesterday_increase;
+	NumericSeries span;
+	Numeric avg_span;
+	Numeric num_increase;
+	Numeric num_decrease;
+	Numeric max_num;
+	Numeric min_num;
+	Numeric accu_sell; 
+	Numeric accu_buy;
+
+	
+	
+	  
+Begin
+	
+	pinzhong = Symbol();	
+	step_sign = pinzhong+"_steps";
+	
+	//last_close = (high[1]+low[1]+close[1])/3;
+	last_close = (high + low )/2;
+	span = high - low;
+	avg_span = WAverage(span, 200);
+
+	
+	
+	timeholder = CurrentTime();
+	//FileAppend(outputfilename,"======================"+Text(CurrentTime)+"=============================");
+	
+	
+	
+	////////////////////////////////////
+	// calculate bias
+	///////////////////////////////////
+	
+	ma_short = WAverage(last_close, 10);
+	ma_middle = WAverage(last_close, 25);
+	ma_long = WAverage(last_close, 50);
+	
+	
+	last_close_ma_short = LinearRegValue(ma_short, 4, 0);
+	last_close_ma_middle = LinearRegValue(ma_middle, 4, 0);
+	last_close_ma_long = LinearRegValue(ma_long, 4, 0);
+	
+	
+	ma_adapt = AdaptiveMovAvg(last_close, 15, 2, 30); 
+	
+	ma_adapt_diff  = ma_adapt - ma_adapt[1];
+	ma_adapt_diff_avg = Average(ma_adapt_diff, 3);
+	
+	ma_adapt_diff_avg = ma_adapt_diff_avg + (last_close_ma_short-last_close_ma_short[1]);
+	
+	
+	
+	
+	bias_score = 0;
+	
+	
+	If(last_close_ma_middle - last_close_ma_middle[1] > avg_span*0.1){
+		bias_score = bias_score + 1;
+	}
+	If(last_close > last_close_ma_middle){
+		bias_score = bias_score + 1;
+	}
+	If(last_close_ma_short > last_close_ma_middle){
+		bias_score = bias_score + 1;
+	}
+	If(last_close_ma_middle > last_close_ma_long){
+		bias_score = bias_score + 1;
+	}
+	
+	If(ma_adapt_diff_avg > avg_span*0.382){
+		bias_score = bias_score + 1;
+	}
+	
+	
+	
+	If(last_close_ma_middle - last_close_ma_middle[1] < -1*avg_span*0.1){
+		bias_score = bias_score - 1;
+	}
+	If(last_close < last_close_ma_middle){
+		bias_score = bias_score - 1;
+	}
+	If(last_close_ma_short < last_close_ma_middle){
+		bias_score = bias_score - 1;
+	}
+	If(last_close_ma_middle < last_close_ma_long){
+		bias_score = bias_score - 1;
+	}
+	
+	If(ma_adapt_diff_avg < -1*avg_span*0.382){
+		bias_score = bias_score - 1;
+	}
+	
+	shun_sign = 0;
+	If(bias_score >= 4){
+		shun_sign = 1; 
+	}
+	If(bias_score <= -4){
+		shun_sign = -1;
+	} 
+	
+	
+	 
+	
+	
+	bias_decision = shun_sign;
+	
+	if(bias_decision[1]==-1 && bias_decision==0){
+		accu_buy = Value(GetTBProfileString(step_sign,"accu_buy"));
+		SetTBProfileString(step_sign,"should_buy", Text(accu_buy));
+		SetTBProfileString(step_sign,"accu_buy", Text(0));
+	}
+	
+	if(bias_decision[1]==1 && bias_decision==0){
+		accu_sell = Value(GetTBProfileString(step_sign,"accu_sell"));
+		SetTBProfileString(step_sign,"should_sell", Text(accu_sell));
+		SetTBProfileString(step_sign,"accu_sell", Text(0));
+	}
+	
+
+	
+	
+	SetTBProfileString(step_sign,"bias", Text(bias_decision));
+	
+	
+	////////////////////////////////////
+	// calculate steps
+	///////////////////////////////////
+
+	
+	
+	/*
+	step_decision = Highest(last_close, 15) - Lowest(last_close, 15);
+	step_decision = step_decision / 3;
+	
+	step_decision_short = Highest(last_close, 5) - Lowest(last_close, 5);
+	step_decision_short = step_decision_short / 2;
+	
+	step_decision = step_decision*0.382 + step_decision_short*0.618;
+	
+	
+	
+	step_factor = Floor(ln(Average(Abs(ma_adapt_diff), 5) +2.71), 0.1);
+	step_decision = Floor(step_decision * step_factor, 0.01);
+	*/
+	
+	step_decision = Highest(last_close, 50) - Lowest(last_close, 50);
+	step_decision = step_decision / 5;
+	
+	step_decision_short = Highest(last_close, 20) - Lowest(last_close, 20);
+	step_decision_short = step_decision_short / 3;
+	
+	step_decision = step_decision*0.382 + step_decision_short*0.618;
+	
+	
+	
+	 
+	SetTBProfileString(step_sign,"step", Text(step_decision));
+	
+	//PlotString("diffavg", Text(Round(ma_adapt_diff_avg,0)), high, white); 
+	//PlotString("avgspan", Text(Round(avg_span*0.382,0)), low, yellow); 
+	PlotString("daystep", Text(Floor(step_decision,1)), high, white); 
+	PlotNumeric("mashort", last_close_ma_short);
+	PlotNumeric("mamiddle", last_close_ma_middle);
+	PlotNumeric("malong", last_close_ma_long);
+	PlotNumeric("ma_adapt", ma_adapt);
+	
+	If(bias_decision==1){
+		PlotBool("bias", True, low);
+	}
+	If(bias_decision==-1){
+		PlotBool("bias", False, low);
+	}
+	
+	
+	//
+	
+End
+
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2016/08/01 11:33:20
+// 版权所有	straightup
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------

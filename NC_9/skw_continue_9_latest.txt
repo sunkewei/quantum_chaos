@@ -101,6 +101,8 @@ Vars
 	
 	Numeric accu_buy;
 	Numeric accu_sell;
+	Numeric should_sell_count;
+	Numeric should_buy_count;
 	
 	
 	  
@@ -226,7 +228,11 @@ Begin
 	// Perform Trading Actions
 	////////////////////////////////////////////
 	if(BarStatus==2 && AccountDataExist){
-		
+	
+		currentAsk = Q_AskPrice();
+		currentBid = Q_BidPrice();
+		chiduo=A_BuyPosition(); 
+		chikong=A_SellPosition();
 		
 		totalnumber = Value(GetTBProfileString(totalsign,"total"));
 		NumericArrayClear(openaccountbuy);
@@ -277,6 +283,12 @@ Begin
 		skw_formal_print_array(outputfilename, "sell forbid", openaccountsell);
 		skw_formal_print_array(outputfilename, "buy forbid", openaccountbuy);
 		
+		
+		
+		
+		
+		
+		
 
 		
 		chiduo=A_BuyPosition(); 
@@ -302,32 +314,34 @@ Begin
 						If(restore_price%step!=0){
 							outer_flag = False;
 						}
+						/*
 						Else If(bias_value == -1){
 							
 							outer_flag = False;
 							FileAppend(outputfilename,"bais is -1, cancelled "+Text(restore_price));
-							accu_buy = Value(GetTBProfileString(totalsign,"accu_buy"));
+							accu_buy = Value(GetTBProfileString(step_sign,"accu_buy"));
 							accu_buy = accu_buy +1;
-							SetTBProfileString(totalsign,"accu_buy", Text(accu_buy));
+							SetTBProfileString(step_sign,"accu_buy", Text(accu_buy));
 							
-							/*
+							
 							// nudge and change restore price to lower available place
-							tmp_restore_price = Floor(currentBid, step_base);
-							while (tmp_restore_price > 0){
-								occupied_flag = skw_formal_array_functions("contains", openaccountbuy, tmp_restore_price);
-								if (occupied_flag == 0){
-									FileAppend(outputfilename,"bais is -1, nudged the current price from "+Text(restore_price)+" to "+Text(tmp_restore_price));
-									restore_price = tmp_restore_price;
-									Break;
-								}
-								tmp_restore_price = tmp_restore_price - step_base;
+							//tmp_restore_price = Floor(currentBid, step_base);
+							//while (tmp_restore_price > 0){
+							//	occupied_flag = skw_formal_array_functions("contains", openaccountbuy, tmp_restore_price);
+							//	if (occupied_flag == 0){
+							//		FileAppend(outputfilename,"bais is -1, nudged the current price from "+Text(restore_price)+" to "+Text(tmp_restore_price));
+							//		restore_price = tmp_restore_price;
+							//		Break;
+							//	}
+							//	tmp_restore_price = tmp_restore_price - step_base;
 								
-							}
-							If(tmp_restore_price > 0){
-								outer_flag = True;
-							}
-							*/
-						}Else{
+							//}
+							//If(tmp_restore_price > 0){
+							//	outer_flag = True;
+							//}
+							
+						}*/
+						Else{
 							avoid_duplicated_restore_price = restore_price - step;
 							occupied_flag = skw_formal_array_functions("contains", openaccountbuy, avoid_duplicated_restore_price);
 							If(occupied_flag == 0 && bias_value==0){
@@ -375,32 +389,34 @@ Begin
 						If(restore_price%step!=0){
 							outer_flag = False;
 						}
+						/*
 						Else If(bias_value == 1){
 						
 							outer_flag = False;
 							FileAppend(outputfilename,"bais is 1, cancelled "+Text(restore_price));
-							accu_sell = Value(GetTBProfileString(totalsign,"accu_sell"));
+							accu_sell = Value(GetTBProfileString(step_sign,"accu_sell"));
 							accu_sell = accu_sell +1;
-							SetTBProfileString(totalsign,"accu_sell", Text(accu_sell));
-							/*
-							tmp_restore_price = Ceiling(currentAsk,step_base);
-							sell_array_max = skw_formal_array_functions("max",openaccountsell, 0);
-							while (tmp_restore_price <= sell_array_max + 10*step_base){
-								occupied_flag = skw_formal_array_functions("contains", openaccountsell, tmp_restore_price);
-								if (occupied_flag == 0){
-									FileAppend(outputfilename,"bais is 1, nudged the current price from "+Text(restore_price)+" to "+Text(tmp_restore_price));
-									restore_price = tmp_restore_price;
-									Break;
-								}
-								tmp_restore_price = tmp_restore_price + step_base;
-								
-							}
-							If(tmp_restore_price > 0){
-								outer_flag = True;
-							}
-							*/
+							SetTBProfileString(step_sign,"accu_sell", Text(accu_sell));
+							
+							//tmp_restore_price = Ceiling(currentAsk,step_base);
+							//sell_array_max = skw_formal_array_functions("max",openaccountsell, 0);
+							//while (tmp_restore_price <= sell_array_max + 10*step_base){
+							//	occupied_flag = skw_formal_array_functions("contains", openaccountsell, tmp_restore_price);
+							//	if (occupied_flag == 0){
+							//		FileAppend(outputfilename,"bais is 1, nudged the current price from "+Text(restore_price)+" to "+Text(tmp_restore_price));
+							//		restore_price = tmp_restore_price;
+							//		Break;
+							//	}
+							//	tmp_restore_price = tmp_restore_price + step_base;
+							//	
+							//}
+							//If(tmp_restore_price > 0){
+							//	outer_flag = True;
+							//}
+							
 						
-						}Else{
+						}*/
+						Else{
 							avoid_duplicated_restore_price = restore_price + step;
 							occupied_flag = skw_formal_array_functions("contains", openaccountsell, avoid_duplicated_restore_price);
 							If(occupied_flag == 0  && bias_value==0){
@@ -507,7 +523,7 @@ Begin
 			
 			chiduo=A_BuyPosition(); 
 			chikong=A_SellPosition();
-			duokongminus = (chiduo-chikong)/slots - bias_value;
+			duokongminus = (chiduo-chikong)/slots - bias_value*2;
 			if(realbuy == False){
 				duokongminus = GetNumericArraySize(openaccountsell) - GetNumericArraySize(openaccountbuy) - bias_value;
 			}

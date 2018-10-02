@@ -1,0 +1,544 @@
+/*  **************************************
+ * Nuclear Version 8.0
+ @ Dependency
+ skw_formal_print_array
+ skw_formal_array_functions
+ skw_steps_calc
+ 
+ ******************************************/
+
+Params 
+	Numeric slots(1);
+	Numeric diff_threshold(0.2);
+
+Vars
+	Numeric latestoperation(4);
+	String outputfilename;
+	String outputtradefilename;
+ 
+	
+	Numeric timeholder;
+	String pinzhong;
+	Numeric today_lowerlimit;
+	Numeric	today_upperlimit;
+	
+	Numeric chiduo;
+	Numeric chikong;
+	Numeric currentAsk;
+	Numeric currentBid;
+	
+	Numeric realbuy;
+	
+	
+	
+	Numeric length(0);
+	String next_buy_sign;
+	
+	 
+	NumericSeries last_close;
+	Numeric long_scale;
+	Numeric short_scale;
+	NumericSeries ma_adapt_10; 
+	NumericSeries ma_adapt_9; 
+	NumericSeries ma_adapt_8; 
+	NumericSeries ma_adapt_7; 
+	NumericSeries ma_adapt_6; 
+	NumericSeries ma_adapt_5; 
+	NumericSeries ma_adapt_4; 
+	NumericSeries ma_adapt_3; 
+	NumericSeries ma_adapt_2; 
+	NumericSeries ma_adapt_1;
+	NumericSeries ma_adapt_total_raw;
+	
+	NumericSeries ma_adapt_total;
+	
+	
+	NumericSeries bias_decision;
+	NumericSeries ma_adapt_diff; 
+	
+	Numeric color;
+	NumericSeries dk_accu_posi;
+	NumericSeries dk_accu_negi;
+	NumericSeries dk_accu;
+	NumericSeries buy_sell_indicator;
+	
+	Numeric span;
+	Numeric price_span;
+	NumericSeries dynamic_length;
+
+	Bool continuous_buy_condition;
+	Bool quit_buy_condition;
+	
+	Bool continuous_sell_condition;
+	Bool quit_sell_condition;
+	
+	
+	NumericSeries accu_factor(1);
+	Numeric length_limit(300);
+	
+	NumericSeries increase_diff;
+	NumericSeries increase_step_factor(1);
+	
+	NumericSeries turning_price;
+	
+	Numeric avg_distance;
+	Numeric idx;
+	NumericSeries range_factor;
+	NumericSeries range_counter;	
+	
+	NumericSeries price_factor(1);
+	NumericSeries avg_price;
+	NumericSeries turning_increase;
+	NumericSeries price_position;
+	NumericSeries status(0);
+	
+	String totalsign;
+	
+	
+	  
+Begin
+	
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Initialization 
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	
+	////////////////////////////////
+	// Initialize Variables
+	//////////////////////////////// 
+	realbuy = 2;
+	pinzhong = Symbol();
+	outputfilename = "c:\\continue_"+pinzhong+"_nuclear.txt";
+	outputtradefilename = "c:\\trade_"+pinzhong+".txt";
+	timeholder = CurrentTime();
+	totalsign = pinzhong+"_total";
+	
+	If( barstatus==0 ){
+		SetGlobalVar( latestoperation, 0 );
+	}
+	
+	////////////////////////////////
+	// Trade Protection
+	////////////////////////////////
+	if(realbuy ==1){
+		FileAppend(outputfilename,"======================"+Text(CurrentTime)+"=============================");
+		If (Weekday==6 || Weekday==0){
+			FileAppend(outputfilename,"Weekend, no trading");
+		}	
+		If(timeholder>=0.150100 && timeholder<=0.205000){
+			return;
+		}
+		If(timeholder>=0.000000 && timeholder<=0.085500){
+			return;
+		}
+	}
+	
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Trading
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	
+	///////////////////////////////////
+	// Judge whether Account is ready
+	///////////////////////////////////
+	if(realbuy ==1){
+		if(BarStatus==2 && AccountDataExist){
+			
+			today_lowerlimit = Q_LowerLimit();
+			today_upperlimit = Q_UpperLimit(); 
+			currentAsk = Q_AskPrice();
+			currentBid = Q_BidPrice();
+			
+			If(!(today_lowerlimit > 0 && today_upperlimit > 0 && currentAsk > 0 && currentBid > 0 ) ){
+				FileAppend(outputfilename,"----------account not on, no trading----------");
+				return;
+			}
+			If(currentAsk==today_upperlimit || currentBid== today_lowerlimit){
+				FileAppend(outputfilename,"----------price limit hit, no trading----------");
+				return;
+			}
+		}
+	}
+	
+	////////////////////////////////////
+	// Calculate ma_adapt_total
+	///////////////////////////////////
+	length_limit = 300;
+	last_close = open;//LinearRegValue(open, 10, 0); 
+	avg_price = Average(last_close, 5);
+	length = dynamic_length[1];
+	long_scale = 30;
+	short_scale = 2;
+	ma_adapt_10 = AdaptiveMovAvg(last_close, length, short_scale, long_scale); 
+	ma_adapt_9 = AdaptiveMovAvg(last_close, length*9/10, short_scale, long_scale); 
+	ma_adapt_8 = AdaptiveMovAvg(last_close, length*8/10, short_scale, long_scale); 
+	ma_adapt_7 = AdaptiveMovAvg(last_close, length*7/10, short_scale, long_scale); 
+	ma_adapt_6 = AdaptiveMovAvg(last_close, length*6/10, short_scale, long_scale); 
+	ma_adapt_5 = AdaptiveMovAvg(last_close, length*5/10, short_scale, long_scale); 
+	ma_adapt_4 = AdaptiveMovAvg(last_close, length*4/10, short_scale, long_scale); 
+	ma_adapt_3 = AdaptiveMovAvg(last_close, length*3/10, short_scale, long_scale); 
+	ma_adapt_2 = AdaptiveMovAvg(last_close, length*2/10, short_scale, long_scale); 
+	ma_adapt_1 = AdaptiveMovAvg(last_close, length*1/10, short_scale, long_scale); 	
+	ma_adapt_total = (ma_adapt_1 + ma_adapt_2 + ma_adapt_3 + ma_adapt_4 + ma_adapt_5 + ma_adapt_6 + ma_adapt_7 + ma_adapt_8 + ma_adapt_9 + ma_adapt_10)/10;
+	ma_adapt_total = AdaptiveMovAvg(ma_adapt_total, 10, 2, 30);
+	
+	////////////////////////////////////
+	// price position
+	///////////////////////////////////
+	price_position = Round((last_close-Lowest(last_close, 200))*100/(Highest(last_close, 200)-Lowest(last_close, 200)),0);
+	
+	
+	////////////////////////////////////
+	// increase_step_factor calculate
+	///////////////////////////////////
+	increase_diff = Abs(last_close - last_close[1]);
+	increase_step_factor = Max(increase_diff/Median(increase_diff, 30), 0.5) - 1;
+	
+	////////////////////////////////////
+	// Calculate bias decision
+	///////////////////////////////////
+	price_span = Max(Average(Abs(close[1]-close[2]), 50), PriceScale);
+	ma_adapt_diff = (ma_adapt_total -  ma_adapt_total[2])/price_span;
+	span = Highest(Abs(ma_adapt_diff), 50)/1.5;
+	if(ma_adapt_diff > span){
+		bias_decision = 1;
+	}Else if(ma_adapt_diff < -1*span){
+		bias_decision = -1;
+	}Else if(ma_adapt_diff < 0){
+		bias_decision = -0.1;
+	}Else if(ma_adapt_diff > 0){
+		bias_decision = 0.1;
+	}Else{
+		bias_decision = 0;
+	}
+	////////////////////////////////////
+	// Calculate accu
+	///////////////////////////////////
+	
+	if(bias_decision*bias_decision[1] <=0 ){
+		accu_factor = 1;
+		dynamic_length = length_limit;
+		
+	}Else{
+		dynamic_length = Max(Round(dynamic_length[1]*0.9, 0), 10);
+		if ((last_close - last_close[1]) * bias_decision > 0){
+			accu_factor = accu_factor[1]*1.1;
+		}
+	}
+	dk_accu_posi = ma_adapt_diff;	
+	if(ma_adapt_diff > 0 and ma_adapt_diff[1] > 0){
+		dk_accu_posi = dk_accu_posi+dk_accu_posi[1];
+	}else{
+		dk_accu_posi = 0;
+	}
+	
+	dk_accu_negi = ma_adapt_diff;
+	if(ma_adapt_diff < 0 and ma_adapt_diff[1] < 0){
+		dk_accu_negi = dk_accu_negi+dk_accu_posi[1];
+	}else{
+		dk_accu_negi = 0;
+	}
+		
+	dk_accu = dk_accu[1] + ma_adapt_diff; 
+	if(dk_accu*bias_decision <0){
+		dk_accu = dk_accu + ma_adapt_diff*accu_factor*6;
+	}
+	
+	If(dk_accu>0 and dk_accu[1]<0){
+		dk_accu = dk_accu_posi;
+	}
+	If(dk_accu<0 and dk_accu[1]>0){
+		dk_accu = dk_accu_negi;
+	}
+	
+	
+	////////////////////////////////////
+	// Calculate avg_distance
+	///////////////////////////////////
+	If(dk_accu*dk_accu[1] <=0){
+	    turning_price = last_close;
+		If(last_close > turning_price[1] ){
+			turning_increase = 1;
+		}Else If(last_close < turning_price[1]){
+			turning_increase = -1;
+		}Else{
+			turning_increase = 0;
+		}
+		range_factor = 3;
+	}else{
+		turning_price = turning_price[1];
+		/*if(Abs(last_close-turning_price) > open*0.05){
+			turning_price = Sign(last_close - open*0.05)*Abs(last_close - open*0.05);
+		}*/
+		If( turning_increase[1] > 0){
+			turning_increase = turning_increase + 1;
+		}Else If(turning_increase[1]<0){
+			turning_increase = turning_increase -1;
+		}Else{
+			turning_increase = 0;
+		}
+		range_factor = Max(range_factor[1]*0.95, 0.4);
+	}
+	
+	
+	for idx=0 to 29{
+		avg_distance = avg_distance + Abs(last_close[idx] - turning_price[idx]);
+	}
+	avg_distance = Max(avg_distance/30, open*0.01*range_factor);
+	
+	If(last_close < turning_price - avg_distance){
+		range_counter = range_counter[1] - 1;
+	}Else If(last_close > turning_price + avg_distance){
+		range_counter = range_counter[1] + 1;
+	}Else{
+		range_counter = 0;
+	}
+	
+	
+	
+	
+	
+	////////////////////////////////////
+	// Calculate buy_sell_indicator
+	///////////////////////////////////
+	
+	buy_sell_indicator = 0;
+	
+	If(
+		dk_accu>0
+		&& Abs(turning_increase)>70
+		&& price_position >=90
+		&& last_close > turning_price + avg_distance
+		&& range_counter>10
+		&& avg_price > avg_price[5] && avg_price[5] > avg_price[10]
+		){
+		
+			buy_sell_indicator = 1;
+	
+	}Else If(
+		dk_accu<0
+		&& Abs(turning_increase)>70
+		&& price_position <=10
+		&& last_close < turning_price - avg_distance
+		&& range_counter<-10
+		&& avg_price < avg_price[5] && avg_price[5] < avg_price[10]
+		){  
+			
+			buy_sell_indicator = -1;
+	}
+	
+	
+	
+	
+	continuous_buy_condition = buy_sell_indicator>0 ; 
+	
+	quit_buy_condition = ((last_close < turning_price - avg_distance ) or (turning_increase>100 and last_close < turning_price ))  ;
+	
+	continuous_sell_condition = buy_sell_indicator<0 ;
+	
+	quit_sell_condition = ((last_close > turning_price + avg_distance ) or (turning_increase<-100 and last_close > turning_price))
+							;
+							
+	status = status[1];
+	If(continuous_buy_condition and status[1]==0){
+			status = 1;
+	}Else If(quit_buy_condition and status[1]==1){
+			status = 0;
+	}
+	
+	If(continuous_sell_condition and status[1]==0 ){
+			status = -1;
+	}Else If(quit_sell_condition and status[1]==-1){
+			status = 0;
+	}						
+	
+	SetTBProfileString(totalsign,"status", Text(status));
+		
+	
+	
+	/////////////////////////////////
+	// deal
+	/////////////////////////////////
+	if(realbuy ==1 || realbuy==0){
+		if(BarStatus==2 && AccountDataExist){
+			currentAsk = Q_AskPrice();
+			currentBid = Q_BidPrice();
+			chiduo=A_BuyPosition(); 
+			chikong=A_SellPosition(); 
+			If(continuous_buy_condition and Abs(chiduo)<slots ){
+			
+				//////////////////
+				// 平空
+				//////////////////
+				currentAsk = Q_AskPrice();
+				currentBid = Q_BidPrice();
+				chiduo=A_BuyPosition(); 
+				chikong=A_SellPosition(); 
+				If(Abs(chikong)>0 && CurrentBar > GetGlobalVar(latestoperation)  ){
+					FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t++ pingkong\t"+Text(Abs(chikong))+"\t"+Text(currentAsk));
+					If(realbuy==1){
+						If(A_TodaySellPosition==0){
+							A_SendOrder(Enum_Buy,Enum_Exit,chikong, currentAsk);
+						}Else{
+							A_SendOrder(Enum_Buy,Enum_ExitToday,chikong, currentAsk);
+						}
+					}
+				}
+				
+				//////////////////
+				// 开多
+				//////////////////
+				
+				currentAsk = Q_AskPrice();
+				currentBid = Q_BidPrice();
+				chiduo=A_BuyPosition(); 
+				chikong=A_SellPosition(); 
+				
+				If(Abs(chiduo)<slots && CurrentBar > GetGlobalVar(latestoperation) ){
+					FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t++ kaiduo\t"+Text(slots-Abs(chiduo))+"\t"+Text(currentAsk));
+					If(realbuy==1){
+						A_SendOrder(Enum_Buy,Enum_Entry,slots-Abs(chiduo),currentAsk);
+						SetGlobalVar(latestoperation, CurrentBar);
+					}
+				}
+			}Else If(quit_buy_condition && Abs(chiduo)>0){
+				//////////////////
+				// 平多
+				//////////////////
+				currentAsk = Q_AskPrice();
+				currentBid = Q_BidPrice();
+				chiduo=A_BuyPosition(); 
+				chikong=A_SellPosition(); 
+				If(Abs(chiduo)>0 && CurrentBar > GetGlobalVar(latestoperation) ){
+					FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t-- pingduo\t"+Text(Abs(chiduo))+"\t"+Text(currentBid));
+					If(realbuy==1){
+						If(A_TodayBuyPosition==0){
+							A_SendOrder(Enum_Sell, Enum_Exit,Abs(chiduo), currentBid);
+						}Else{
+							A_SendOrder(Enum_Sell, Enum_ExitToday,Abs(chiduo), currentBid);
+						}
+						SetGlobalVar(latestoperation, CurrentBar);
+					}
+				}
+				
+			}
+			
+			If(continuous_sell_condition && Abs(chikong)<slots ){
+			
+				//////////////////
+				// 平多
+				//////////////////
+				currentAsk = Q_AskPrice();
+				currentBid = Q_BidPrice();
+				chiduo=A_BuyPosition(); 
+				chikong=A_SellPosition(); 
+				If(Abs(chiduo)>0 && CurrentBar > GetGlobalVar(latestoperation) ){
+					FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t-- pingduo\t"+Text(Abs(chiduo))+"\t"+Text(currentBid));
+					If(realbuy==1){
+						If(A_TodayBuyPosition==0){
+							A_SendOrder(Enum_Sell, Enum_Exit,Abs(chiduo), currentBid);
+						}Else{
+							A_SendOrder(Enum_Sell, Enum_ExitToday,Abs(chiduo), currentBid);
+						}
+					}
+				}
+				
+				//////////////////
+				// 开空
+				//////////////////
+				currentAsk = Q_AskPrice();
+				currentBid = Q_BidPrice();
+				chiduo=A_BuyPosition(); 
+				chikong=A_SellPosition(); 
+				If(Abs(chikong)<slots && CurrentBar > GetGlobalVar(latestoperation) ){
+					
+					FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t-- kaikong\t"+Text(slots-Abs(chikong))+"\t"+Text(currentBid));
+					If(realbuy==1){
+						A_SendOrder(Enum_Sell, Enum_Entry, slots-Abs(chikong), currentBid);
+						SetGlobalVar(latestoperation, CurrentBar);
+					}
+				}
+				
+				
+			}Else If(quit_sell_condition && Abs(chikong)>0){
+				//////////////////
+				// 平空
+				//////////////////
+				currentAsk = Q_AskPrice();
+				currentBid = Q_BidPrice();
+				chiduo=A_BuyPosition(); 
+				chikong=A_SellPosition(); 
+				If(Abs(chikong)>0 && CurrentBar > GetGlobalVar(latestoperation)  ){
+					FileAppend(outputtradefilename, Text(CurrentDate)+"-"+Text(CurrentTime)+"\t++ pingkong\t"+Text(Abs(chikong))+"\t"+Text(currentAsk));
+					If(realbuy==1){
+						If(A_TodaySellPosition==0){
+							A_SendOrder(Enum_Buy,Enum_Exit,Abs(chikong), currentAsk);
+						}Else{
+							A_SendOrder(Enum_Buy,Enum_ExitToday,Abs(chikong), currentAsk);
+						}
+						SetGlobalVar(latestoperation, CurrentBar);
+					}
+				}
+				
+				
+			}
+		}
+	}
+	
+	
+	if(realbuy ==2){
+		If(continuous_buy_condition and CurrentContracts==0){
+				Buy(slots, open);
+		}Else If(quit_buy_condition){
+				Sell(0, open);
+		}
+		If(continuous_sell_condition and CurrentContracts==0 ){
+				SellShort(slots, open);
+		}Else If(quit_sell_condition){
+				BuyToCover(0, open);
+		}
+		
+		
+		
+		
+		
+	}
+	
+
+	//PlotNumeric("m10", ma_adapt_total, 0, yellow, 0);
+	PlotNumeric("tp", turning_price , 0, white, 0);
+	PlotNumeric("tpu", turning_price + avg_distance, 0, white, 0);
+	PlotNumeric("tpm", turning_price - avg_distance, 0, white, 0);
+	
+	color=white;
+	if(status>0){
+		color = green;
+	}
+	if(status<0){
+		color = red;
+	}
+	
+	
+	
+	PlotString("dkaccu", Text(Round(status,1)), high, color); 
+	/*
+	color=yellow;
+	if(turning_increase>0){
+		color = green;
+	}
+	if(turning_increase<0){
+		color = red;
+	}
+	
+	if(Abs(turning_increase)>60){
+		
+	}
+	*/
+	
+End
+
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2016/08/01 11:33:20
+// 版权所有	straightup
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------
