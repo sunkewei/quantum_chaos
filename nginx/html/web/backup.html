@@ -1,0 +1,362 @@
+<html charset="utf-8">
+<head>
+  <title>东夷投资</title>
+
+  <meta charset="utf-8"/>
+  <link rel="shortcut icon" type="image/x-icon" href="easten.png" />
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+  <link rel="stylesheet" href="css/datatable.css">
+  <link rel="stylesheet" href="css/jquerymobile.css" />
+  <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+  <script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+  <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/highcharts-more.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <script src="https://code.highcharts.com/modules/export-data.js"></script>
+
+
+  <style type="text/css">
+    .highcharts-tooltip h3 {
+      margin: 0.3em 0;
+    }
+    .ui-page {
+       background-color: #000000 !important;
+     }
+     td { text-shadow:0px 0px 0px #000}
+
+  </style>
+</head>
+<body>
+
+  <!--div id="page1" data-role="page" data-prev="#page3" data-next="#page2">
+      <div data-role="content" style="width:100%">
+        <div class="container-fluid">
+            <div class="row justify-content-center align-self-center">
+              <img src="logo_big.jpg" class="rounded mx-auto d-block" alt="东夷投资" />
+            </div>
+        </div>
+
+      </div>
+  </div-->
+
+  <div id="page1" data-role="page" data-prev="#page1" data-next="#page1">
+      <div data-role="content">
+        <img src="logo_big.jpg" class="float-left" style="width:350px" alt="东夷投资" />
+        <table id="example" class="table table-striped table-dark" style="width:100%">
+            <thead>
+                <tr>
+                  <th>编码</th>
+                  <th>名称</th>
+                  <th>趋势</th>
+                  <th>交易天数</th>
+                  <th>利润</th>
+                  <th>日均利润</th>
+                  <th>年化利润</th>
+                </tr>
+            </thead>
+        </table>
+
+        <table id="idct" class="table table-striped table-dark" style="width:100%">
+            <thead>
+                <tr>
+                  <th>编码</th>
+                  <th>名称</th>
+                  <th>Trend 510</th>
+                  <th>Range Counter</th>
+                  <th>Is Out</th>
+                  <th>Price Position</th>
+                  <th>Turning Count</th>
+                  <th>ACCU</th>
+                  <th>score</th>
+                </tr>
+            </thead>
+        </table>
+
+
+      </div>
+      <div id="scattercontainer" style="height: 400px; min-width: 600px; width: 100%; margin: 0 auto"></div>
+  </div>
+
+  <!--div id="page3" data-role="page" data-prev="#page2" data-next="#page1">
+      <div data-role="content">
+          I am page 3
+      </div>
+  </div-->
+
+</body>
+<script>
+  function navnext( next ) {
+      $( ":mobile-pagecontainer" ).pagecontainer( "change", next, {
+          transition: "slide"
+      });
+  }
+  function navprev( prev ) {
+      $( ":mobile-pagecontainer" ).pagecontainer( "change", prev, {
+          transition: "slide",
+          reverse: true
+      });
+  }
+  $( document ).one( "pagecreate", "[id^=page]", function() {
+      // Handler for navigating to the next page
+      // Navigate to the next page on swipeleft
+      $( document ).on( "swipeleft", ".ui-page", function( event ) {
+          // Get the filename of the next page. We stored that in the data-next
+          // attribute in the original markup.
+          console.log("swipeleft")
+          var next = $( this ).jqmData( "next" );
+          if ( next ) {
+              navnext( next );
+          }
+      });
+      // The same for the navigating to the previous page
+      $( document ).on( "swiperight", ".ui-page", function( event ) {
+          console.log("swiperight")
+          var prev = $( this ).jqmData( "prev" );
+          if (prev) {
+              navprev( prev );
+          }
+      });
+  });
+
+  $( document ).ready(function() {
+
+    var onlist_table = $('#example').DataTable( {
+      "ordering": false,
+      "bPaginate": false,
+      "bFilter": false,
+      "bInfo": false,
+      "bSortable": true,
+      "bRetrieve": false,
+        "ajax": "qhitem.json",
+        "fnRowCallback": function( nRow, aData, iDisplayIndex, iDisplayIndexFull ) {
+
+                      if ( aData["trend"].startsWith("UP") )
+                      {
+                          $('td', nRow).css('color', 'lightgreen');
+                          //$('td', nRow).css('color', 'white');
+                          //$('td', nRow).css('background-color', '#008000');
+                      }
+                      if ( aData["trend"].startsWith("DOWN") )
+                      {
+                          $('td', nRow).css('color', 'red');
+                          //$('td', nRow).css('color', 'white');
+                          //$('td', nRow).css('background-color', '#7c0a02');
+                      }
+
+                  },
+        'columnDefs': [
+                        {
+                            "targets": ["0", "1", "2", "3", "4", "5"],
+                            "className": "text-center"
+                        }],
+        "columns": [
+            { "data": "pinzhong_abv" },
+            { "data": "pinzhong_name" },
+            { "data": "trend" },
+            { "data": "cycles"},
+            { "data": "profit" },
+            { "data": "daily_profit" },
+            { "data": "year_to_year" }
+        ]
+    });
+
+    var candidate_table = $('#idct').DataTable( {
+      "ordering": false,
+      "bPaginate": false,
+      "bFilter": false,
+      "bInfo": false,
+      "bSortable": false,
+      "bRetrieve": false,
+        "ajax": "indicator.json",
+        "fnRowCallback": function( nRow, aData, iDisplayIndex, iDisplayIndexFull ) {
+
+                      if (aData["turning_count"]!=0 )
+                      {
+                          $('td', nRow).css('color', 'gold');
+                          //$('td', nRow).css('color', 'white');
+                          //$('td', nRow).css('background-color', '#008000');
+                      }
+
+                      if(aData["trend_5_10"]> 0){
+                          $(nRow).find('td:eq(2)').css('color', 'lightgreen');
+                      }else if (aData["trend_5_10"]<0) {
+                          $(nRow).find('td:eq(2)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(2)').css('color', 'white');
+                      }
+
+                      if(aData["range_counter"]> 10){
+                          $(nRow).find('td:eq(3)').css('color', 'lightgreen');
+                      }else if (aData["range_counter"]<-10) {
+                          $(nRow).find('td:eq(3)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(3)').css('color', 'white');
+                      }
+
+                      if(aData["out_of_range"]> 0){
+                          $(nRow).find('td:eq(4)').css('color', 'lightgreen');
+                      }else if (aData["out_of_range"]<0) {
+                          $(nRow).find('td:eq(4)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(4)').css('color', 'white');
+                      }
+
+                      if(aData["price_position"]>= 90){
+                          $(nRow).find('td:eq(5)').css('color', 'lightgreen');
+                      }else if (aData["price_position"]<=10) {
+                          $(nRow).find('td:eq(5)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(5)').css('color', 'white');
+                      }
+
+                      if(aData["turning_count"]> 70){
+                          $(nRow).find('td:eq(6)').css('color', 'lightgreen');
+                      }else if (aData["turning_count"]<-70) {
+                          $(nRow).find('td:eq(6)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(6)').css('color', 'white');
+                      }
+                      if(aData["accu"]> 0){
+                          $(nRow).find('td:eq(7)').css('color', 'lightgreen');
+                      }else if (aData["accu"]<0) {
+                          $(nRow).find('td:eq(7)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(7)').css('color', 'white');
+                      }
+
+                      if(aData["score"]> 0){
+                          $(nRow).find('td:eq(8)').css('color', 'lightgreen');
+                      }else if (aData["score"]<0) {
+                          $(nRow).find('td:eq(8)').css('color', 'red');
+                      }else{
+                          $(nRow).find('td:eq(8)').css('color', 'white');
+                      }
+                  },
+        'columnDefs': [
+                        {
+                            "targets": ["0", "1", "2", "3", "4", "5"],
+                            "className": "text-center"
+                        }],
+        "columns": [
+            { "data": "pinzhong_abv" },
+            { "data": "pinzhong_name" },
+            { "data": "trend_5_10" },
+            { "data": "range_counter"},
+            { "data": "out_of_range" },
+            { "data": "price_position" },
+            { "data": "turning_count" },
+            { "data": "accu" },
+            { "data": "score"}
+        ]
+    });
+
+
+      scatter_chart = Highcharts.chart('scattercontainer', {
+          chart: {
+              type: 'bubble',
+              plotBorderWidth: 1,
+              zoomType: 'xy'
+          },
+
+          legend: {
+              enabled: false
+          },
+
+          title: {
+              text: 'Sugar and fat intake per cname'
+          },
+
+          xAxis: {
+              max: 100,
+              min: -100,
+              gridLineWidth: 1,
+              title: {
+                  text: 'Distribute Table'
+              },
+              labels: {
+                  format: '{value}'
+              },
+              plotLines: [{
+                  color: 'black',
+                  dashStyle: 'dot',
+                  width: 2,
+                  value: 70,
+                  label: {
+                      rotation: 0,
+                      y: 15,
+                      style: {
+                          fontStyle: 'italic'
+                      },
+                      text: ''
+                  },
+                  zIndex: 3
+              }]
+          },
+
+          yAxis: {
+              startOnTick: false,
+              endOnTick: false,
+              max: 8,
+              min: -8,
+              title: {
+                  text: "Score"
+              },
+              labels: {
+                  format: '{value}'
+              },
+              maxPadding: 0.2,
+              plotLines: [{
+                  color: 'black',
+                  dashStyle: 'dot',
+                  width: 2,
+                  value: 6,
+                  label: {
+                      align: 'right',
+                      style: {
+                          fontStyle: 'italic'
+                      },
+                      text: '',
+                      x: 7
+                  },
+                  zIndex: 3
+              }]
+          },
+
+          tooltip: {
+              useHTML: true,
+              headerFormat: '<table>',
+              pointFormat: '<tr><th colspan="2"><h3>{point.cname}</h3></th></tr>' +
+                  '<tr><th>Cycles:</th><td>{point.x}</td></tr>' +
+                  '<tr><th>Score:</th><td>{point.y}</td></tr>' +
+                  '<tr><th>code:</th><td>{point.name}</td></tr>',
+              footerFormat: '</table>',
+              followPointer: true
+          },
+
+          plotOptions: {
+              series: {
+                  dataLabels: {
+                      enabled: true,
+                      format: '{point.cname}'
+                  }
+              }
+          },
+
+          series: [{
+              data: []
+          }]
+
+      });
+
+    setInterval( function () {
+        onlist_table.ajax.reload();
+        candidate_table.ajax.reload();
+        $.getJSON('indicator.json', function (result) {
+          console.log(result);
+          scatter_chart.series[0].setData(result.scatter);
+       });
+     }, 1000 );
+  });
+</script>
+</html>
