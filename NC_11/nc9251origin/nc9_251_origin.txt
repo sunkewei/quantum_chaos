@@ -1,0 +1,459 @@
+/*  **************************************
+ * Nuclear Version 8.0
+ @ Dependency
+ skw_formal_print_array
+ skw_formal_array_functions
+ skw_steps_calc
+ 
+ ******************************************/
+
+Params 
+	Numeric slots(1);
+	
+Vars
+	Numeric latestoperation(4);
+	String outputfilename;
+	String freqfilename;
+	String profit_filename;
+	Numeric timeholder;
+	String pinzhong;
+	Numeric today_lowerlimit;
+	Numeric	today_upperlimit;
+	
+	Numeric length(0);
+	NumericSeries dynamic_length(0);
+	Numeric long_scale;
+	Numeric short_scale;
+	NumericSeries avg_price;
+	
+	NumericSeries day_cycles(0);
+	NumericSeries current_cycle(0);
+	 
+	NumericSeries last_close;
+	NumericSeries recent_amount;
+	
+	NumericSeries ma_adapt_total;
+	NumericSeries bias_decision;
+	NumericSeries ma_adapt_diff; 
+	
+	Numeric color;
+	NumericSeries dk_accu_posi;
+	NumericSeries dk_accu_negi;
+	NumericSeries dk_accu;
+	NumericSeries buy_sell_indicator;
+	
+	Numeric span;
+	Numeric price_span;
+	
+	Bool continuous_buy_condition;
+	Bool quit_buy_condition;
+	
+	Bool continuous_sell_condition;
+	Bool quit_sell_condition;
+	
+	NumericSeries accu_factor(1);
+	Numeric length_limit(200);
+	
+	NumericSeries increase_diff;
+	NumericSeries increase_step_factor(1);
+	
+	NumericSeries turning_price;
+	
+	Numeric avg_distance;
+	Numeric idx;
+	NumericSeries range_factor;
+	NumericSeries range_counter;	
+	
+	NumericSeries price_factor(1);
+	
+	NumericSeries turning_increase;
+	NumericSeries price_position;
+	NumericSeries status(0);
+
+	NumericSeries real_turning_price(0);
+	NumericSeries real_turning_price_upper(0);
+	NumericSeries real_turning_price_down(0);
+
+	Numeric turning_judge;
+	NumericSeries current_profit;
+	String turning_fact;
+	Numeric avg_distance_ratio;
+
+	Numeric price_distance;
+	Numeric overall_score;
+	Numeric range_score; 
+	Numeric turning_score;
+	Numeric price_score;
+	Numeric distance_score;
+	
+	Bool is_develop(False);
+
+Begin
+	 
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Initialization 
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	is_develop = False;
+	////////////////////////////////
+	// Initialize Variables
+	//////////////////////////////// 
+	pinzhong = Symbol();
+	timeholder = CurrentTime();
+	outputfilename = "c:/status/"+pinzhong;
+	freqfilename = "c:/freq/"+pinzhong;
+	profit_filename = "c:/profit/qh_profit.txt";
+	last_close = open;
+	
+	if(BarStatus ==0){
+		current_cycle = 0;
+		day_cycles = 0;
+	}
+	
+	// Calculate Day Cycles
+	if(Date != Date[1]){
+		current_cycle = 1;
+	}else{
+		current_cycle = current_cycle[1] +1;
+	}
+	day_cycles = Max(current_cycle, day_cycles);
+
+	////////////////////////////////////
+	// Calculate recent amount
+	///////////////////////////////////
+	recent_amount = Round(Summation((Open[1]+Close[1])*Vol[1]*ContractUnit/2, 3)/3/1000000, 0);
+	
+	////////////////////////////////////
+	// Calculate ma_adapt_total
+	///////////////////////////////////
+	length_limit = 200;
+	avg_price = Average(last_close, 5);
+	length = dynamic_length[1];
+	long_scale = 30;
+	short_scale = 2;
+	ma_adapt_total = AdaptiveMovAvg(last_close, length/2, short_scale, long_scale); 
+	ma_adapt_total = AdaptiveMovAvg(ma_adapt_total, 10, 2, 30);
+	
+	////////////////////////////////////
+	// price position
+	///////////////////////////////////
+	price_position = Round((last_close-Lowest(last_close, 200))*100/(Highest(last_close, 200)-Lowest(last_close, 200)),0);
+	
+	
+	////////////////////////////////////
+	// Calculate bias decision
+	///////////////////////////////////
+	price_span = Max(Average(Abs(close[1]-close[2]), 50), PriceScale);
+	ma_adapt_diff = (ma_adapt_total -  ma_adapt_total[2])/price_span;
+	span = Highest(Abs(ma_adapt_diff), 50)/1.5;
+	if(ma_adapt_diff > span){
+		bias_decision = 1;
+	}Else if(ma_adapt_diff < -1*span){
+		bias_decision = -1;
+	}Else if(ma_adapt_diff < 0){
+		bias_decision = -0.1;
+	}Else if(ma_adapt_diff > 0){
+		bias_decision = 0.1;
+	}Else{
+		bias_decision = 0;
+	}
+	////////////////////////////////////
+	// Calculate accu
+	///////////////////////////////////
+	
+	if(bias_decision*bias_decision[1] <=0 ){
+		accu_factor = 1;
+		dynamic_length = length_limit;
+		
+	}Else{
+		dynamic_length = Max(Round(dynamic_length[1]*0.9, 0), 10);
+		if ((last_close - last_close[1]) * bias_decision > 0){
+			accu_factor = accu_factor[1]*1.1;
+		}
+	}
+	dk_accu_posi = ma_adapt_diff;	
+	if(ma_adapt_diff > 0 and ma_adapt_diff[1] > 0){
+		dk_accu_posi = dk_accu_posi+dk_accu_posi[1];
+	}else{
+		dk_accu_posi = 0;
+	}
+	
+	dk_accu_negi = ma_adapt_diff;
+	if(ma_adapt_diff < 0 and ma_adapt_diff[1] < 0){
+		dk_accu_negi = dk_accu_negi+dk_accu_posi[1];
+	}else{
+		dk_accu_negi = 0;
+	}
+		
+	dk_accu = dk_accu[1] + ma_adapt_diff; 
+	if(dk_accu*bias_decision <0){
+		dk_accu = dk_accu + ma_adapt_diff*accu_factor*6;
+	}
+	
+	If(dk_accu>0 and dk_accu[1]<0){
+		dk_accu = dk_accu_posi;
+	}
+	If(dk_accu<0 and dk_accu[1]>0){
+		dk_accu = dk_accu_negi;
+	}
+
+	
+	////////////////////////////////////
+	// Calculate avg_distance
+	///////////////////////////////////
+	If(dk_accu*dk_accu[1] <=0){
+	    turning_price = last_close;
+		
+		if((last_close - turning_price[1])*turning_increase[1]>0){
+			real_turning_price = real_turning_price[1];
+			real_turning_price_upper = real_turning_price_upper[1];
+			real_turning_price_down = real_turning_price_down[1];
+		}else{
+			real_turning_price = turning_price;
+			real_turning_price_upper = real_turning_price + open*0.03;
+			real_turning_price_down = real_turning_price-open*0.03;
+		}
+		If(last_close > real_turning_price[1] ){
+			turning_increase = 1;
+		}Else If(last_close < real_turning_price[1]){
+			turning_increase = -1;
+		}Else{
+			turning_increase = 0;
+		}
+		range_factor = 3;
+	}else{
+		turning_price = turning_price[1];
+		
+		If( last_close > real_turning_price){ 
+			turning_increase = turning_increase[1] + 1;
+		}Else If(last_close < real_turning_price){
+			turning_increase = turning_increase[1] -1;
+		}Else If( (last_close - real_turning_price) * (last_close[1] - real_turning_price[1]) <=0){
+			turning_increase = 0;
+		}
+		range_factor = Max(range_factor[1]*0.95, 0.4);
+	}
+	
+	
+	for idx=0 to 29{
+		avg_distance = avg_distance + Abs(last_close[idx] - real_turning_price[idx]);
+	}
+	avg_distance = Max(avg_distance/30, open*0.01*range_factor);
+	
+	avg_distance_ratio = avg_distance*100/open;
+	
+	
+	If(last_close < real_turning_price - avg_distance ){
+		range_counter = range_counter[1] - 1;
+	}Else If(last_close > real_turning_price + avg_distance ){
+		range_counter = range_counter[1] + 1;
+	}Else{
+		range_counter = 0; 
+	}
+	
+	turning_judge = Round(turning_increase*100/Min(70, 5*day_cycles), 0);
+	turning_fact = Text(turning_increase) + "/" + Text(Min(70, 5*day_cycles));
+	
+	
+	
+	
+	////////////////////////////////////
+	// Calculate score
+	///////////////////////////////////
+	
+	if(dk_accu != 0){
+			price_distance = avg_distance_ratio*dk_accu/abs(dk_accu);
+		}
+        overall_score = 0;
+        
+		range_score = range_counter/10;
+        if(range_score > 1){
+            range_score = 1;
+		}
+        if(range_score < -1){
+            range_score = -1;
+		}
+        overall_score = overall_score + range_score;
+
+        turning_score = turning_judge/100;
+        if(turning_score > 1){
+            turning_score = 1;
+		}
+        if(turning_score < -1){
+            turning_score = -1;
+		}
+        overall_score = overall_score + turning_score;
+
+        if(dk_accu != 0){
+            overall_score = overall_score + dk_accu/abs(dk_accu);
+		}
+
+
+
+        price_score = 0;
+        if(price_position >= 85){
+            price_score = (price_position - 85)/15;
+		}
+        if(price_position <= 15){
+            price_score = (price_score - 15)/15;
+		}
+        overall_score = overall_score + price_score;
+
+        distance_score = price_distance/4;
+        if(distance_score > 1){
+            distance_score = 1;
+		}
+        if(distance_score < -1){
+            distance_score = -1;
+		}
+        overall_score = overall_score + distance_score;
+
+        overall_score = round(overall_score, 1);
+	
+	
+	////////////////////////////////////
+	// Calculate current profit
+	///////////////////////////////////
+	If(EntryPrice!=0 && BarsSinceLastEntry>0){
+		current_profit = MarketPosition*(close-LastEntryPrice)*100/EntryPrice;  
+	}else{
+		current_profit = 0;
+	}
+	
+	////////////////////////////////////
+	// Calculate buy_sell_indicator and condition
+	///////////////////////////////////
+		
+	buy_sell_indicator = 0;
+	If( 
+		True
+		&&dk_accu>0
+		&& turning_judge>=100 
+		&& price_position >=95
+		&& range_counter>=15
+		&& avg_distance_ratio > 4
+		){ 
+			buy_sell_indicator = 1; 
+	}Else If(
+		True
+		&&dk_accu<0 
+		&& turning_judge<=-100
+		&& price_position <=5
+		&& range_counter<=-15
+		&& avg_distance_ratio > 4 
+		){ 
+			buy_sell_indicator = -1; 
+	}
+	
+	continuous_buy_condition = (buy_sell_indicator>0 or overall_score>=5)  and (BarsSinceExit==0 or BarsSinceExit>=day_cycles*2); 
+	
+	quit_buy_condition = ((last_close < real_turning_price - avg_distance ) or (turning_increase>100 and last_close < real_turning_price ))
+								or ( dk_accu<0 and current_profit-Highest(current_profit,5) < -1  )
+								or ( current_profit<-3 ) 
+								or overall_score < 2.95
+								; 
+
+	continuous_sell_condition = (buy_sell_indicator<0 or overall_score<=-5) and (BarsSinceExit==0 or BarsSinceExit>=day_cycles*2);
+	
+	quit_sell_condition = ((last_close > real_turning_price + avg_distance ) or (turning_increase<-100 and last_close > real_turning_price))
+								or ( dk_accu>0 and current_profit-Highest(current_profit,5) < -1 )
+								or ( current_profit < -3  )
+								or overall_score > -2.95
+							;
+	
+	////////////////////////////////////
+	// Real Trading
+	///////////////////////////////////
+	If(continuous_buy_condition and CurrentContracts==0){
+			Buy(slots, open);
+			If(is_develop){
+				FileAppend(freqfilename,SymbolType+"_"+Text(Date)+"_buy");
+			}
+	}Else If(quit_buy_condition and CurrentContracts>0){
+			Sell(0, close);
+			If(is_develop){
+				FileAppend(profit_filename, Text(current_profit));
+			}
+	}
+	If(continuous_sell_condition and CurrentContracts==0 ){
+			SellShort(slots, open);
+			If(is_develop){
+				FileAppend(freqfilename,SymbolType+"_"+Text(Date)+"_sell");
+			}
+	}Else If(quit_sell_condition and CurrentContracts<0){
+			BuyToCover(0, close);
+			If(is_develop){
+				FileAppend(profit_filename, Text(current_profit));
+			}
+	}
+	
+	////////////////////////////////////
+	// Calculate status
+	///////////////////////////////////						
+	status = Sign(status[1])*(Abs(status)+1);
+	
+	If(continuous_buy_condition and status[1]==0){
+			status = 1;
+	}Else If(quit_buy_condition and status[1]>0){
+			status = 0;
+	}
+
+	If(continuous_sell_condition and status[1]==0 ){
+			status = -1;
+	}Else If(quit_sell_condition and status[1]<0){
+			status = 0;
+	}
+		
+	////////////////////////////////////
+	// output to file
+	///////////////////////////////////	
+	
+	If( BarStatus==2){
+		FileAppend(outputfilename,Text(CurrentDate)+"-"+Text(CurrentTime*1000000)); // -15
+		FileAppend(outputfilename, Text(Round(overall_score, 1)));// -14
+		FileAppend(outputfilename, Text(Round(avg_distance_ratio, 1)));// -13
+		FileAppend(outputfilename, Text(open*ContractUnit)); // -12
+		FileAppend(outputfilename, Text(Round((close-close[day_cycles])*100/close[day_cycles], 2)));// -11
+		FileAppend(outputfilename, Text(recent_amount)); // -10
+		
+		FileAppend(outputfilename, turning_fact); // -9
+		If(dk_accu==0){
+		    FileAppend(outputfilename,"0"); 
+		}Else{
+			FileAppend(outputfilename,Text(dk_accu/Abs(dk_accu))); // -8
+		}
+		FileAppend(outputfilename,Text(turning_judge)); // -7
+		FileAppend(outputfilename, Text(price_position)); // -6
+		FileAppend(outputfilename, Text(range_counter)); // -5
+		FileAppend(outputfilename,pinzhong); // -4
+		FileAppend(outputfilename,Text(Round(current_profit,2))); // -3
+		FileAppend(outputfilename,Text(Sign(dk_accu))); // -2
+		FileAppend(outputfilename,Text(status)); // -1
+	}
+	
+	////////////////////////////////////
+	// output to screen
+	///////////////////////////////////	
+	
+	color=white;
+	if(status>0){ color = green; }
+	if(status<0){ color = red; }
+	if( MarketPosition !=0){
+		PlotString("dkaccu1", Text(Round(current_profit,1)), IIF(CurrentBar%2==0, Low,Low), yellow); 
+	}
+	//PlotString("dkaccu2", Text(overall_score), IIF(CurrentBar%2==0, High,High), white); 
+	PlotNumeric("tpu", real_turning_price + avg_distance, 0, color, 0);
+	PlotNumeric("tpm", real_turning_price - avg_distance, 0, color, 0);
+	
+	if(dk_accu>0){ color = green;}
+	if(dk_accu<0){ color = red; }	
+	PlotNumeric("tp", turning_price , 0, color, 0);
+	
+End
+
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2016/08/01 11:33:20
+// 版权所有	straightup
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------
