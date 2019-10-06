@@ -1,0 +1,71 @@
+//------------------------------------------------------------------------
+// 简称: skw_formal_array_functions
+// 名称: skw_formal_array_functions
+// 类别: 用户函数
+// 类型: 用户函数
+// 输出: 数值型
+//------------------------------------------------------------------------
+
+Params 
+	String f_name;
+	NumericArrayRef array;
+	Numeric item_value;
+	
+Vars
+	Numeric i;
+	Numeric temp_array_size;
+	Numeric result;
+	
+Begin
+	temp_array_size = GetNumericArraySize(array);
+	
+	///////////////////////////////
+	// contains 1--true 2--false
+	//////////////////////////////
+	If (Exact(f_name, "contains")){
+		for i = 0 To temp_array_size-1{
+			if(array[i] == item_value){
+				return 1;
+			}
+		}
+		return 0;
+	}
+	///////////////////////////////
+	// min 
+	// NOTE: make sure the array size > 0
+	//////////////////////////////
+	
+	If (Exact(f_name, "min")){
+		result = array[0];
+		for i = 0 To temp_array_size-1{
+			if(array[i] < result){
+				result = array[i];
+			}
+		}
+		return result;
+	}
+	
+	///////////////////////////////
+	// max
+	// NOTE: make sure the array size > 0
+	//////////////////////////////
+	
+	If (Exact(f_name, "max")){
+		result = array[0];
+		for i = 0 To temp_array_size-1{
+			if(array[i] > result){
+				result = array[i];
+			}
+		}
+		return result;
+	}
+    
+	
+End
+//------------------------------------------------------------------------
+// 编译版本	GS2015.12.25
+// 用户版本	2018/03/30 13:01:25
+// 版权所有	timecompression
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------
