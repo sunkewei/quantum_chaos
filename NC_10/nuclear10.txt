@@ -7,15 +7,16 @@
  ******************************************/
 
 Params 
-	Numeric slots(1);
+	
 
 Vars
+	Numeric slots(1);
 	Numeric latestoperation(4);
 	
 	Numeric step;
-	String step_sign;
-	Numeric down_price_limit;
-	Numeric upper_price_limit;
+	String meta_sign;
+	Numeric downline;
+	Numeric upline;
 	
 	Numeric chiduo;
 	Numeric chikong;
@@ -67,7 +68,7 @@ Vars
 	Numeric totalindex;
 	String restore_type;
 	Numeric restore_price;
-	String totalsign;
+	//String totalsign;
 	Bool realbuy;
 	
 	
@@ -95,21 +96,22 @@ Begin
 	pinzhong = Symbol();
 	outputfilename = "c:\\continue_"+pinzhong+".txt";
 	outputtradefilename = "c:\\trade_"+pinzhong+".txt";
-	step_sign = pinzhong+"_steps";
-	totalsign = pinzhong+"_total";
-	
-	step = Value(GetTBProfileString(step_sign,"step"));
-	timeholder = CurrentTime();
-	
-	
-	down_price_limit = Value(GetTBProfileString(step_sign,"downlimit"));
-	upper_price_limit = Value(GetTBProfileString(step_sign,"upperlimit"));
-	
-	
-	
+	meta_sign = pinzhong+"_meta";
 	If( BarStatus==0 ){
 		SetGlobalVar( latestoperation, 0 );
 	}
+	If( BarStatus!=2 ){
+		return;
+	}
+	If( BarStatus==2 ){
+		slots = Value(GetTBProfileString(meta_sign,"slot"));
+		step = Value(GetTBProfileString(meta_sign,"step"));
+		timeholder = CurrentTime();
+		downline = Value(GetTBProfileString(meta_sign,"downline"));
+		upline = Value(GetTBProfileString(meta_sign,"upline"));
+	}
+	
+	
 	
 	
 	////////////////////////////////
@@ -121,6 +123,7 @@ Begin
 	} 
 	If (Weekday==6 || Weekday==0){
 		FileAppend(outputfilename,"Weekend, no trading");
+		return;
 	}	
 	If(timeholder>=0.150100 && timeholder<=0.205000){
 		return;
@@ -161,11 +164,27 @@ Begin
 	// Perform Trading Actions
 	////////////////////////////////////////////
 	if(BarStatus==2 && AccountDataExist){
+		
+		/////////////////////////////////////////////
+		// test if out of scope
+		////////////////////////////////////////////
+		proposebuydown = Ceiling(currentAsk/step, 1)*step;
+		proposebuyup = proposebuydown + step;
+		proposesellup = Floor(currentBid/step, 1)*step;
+		proposeselldown = proposesellup - step;
+		if( proposebuyup>upline || proposesellup>upline || proposeselldown<downline || proposebuydown<downline){
+			FileAppend(outputfilename,"Current price out of scope, no trading");
+			return;
+		}
+		
+		
+		
+		
 		/////////////////////////////////////////////
 		// load buy array and sell array
 		////////////////////////////////////////////
 			
-		totalnumber = Value(GetTBProfileString(totalsign,"total"));
+		totalnumber = Value(GetTBProfileString(meta_sign,"total"));
 		NumericArrayClear(openaccountbuy);
 		NumericArrayClear(openaccountsell);
 		
@@ -296,7 +315,7 @@ Begin
 				}
 			}
 			
-			SetTBProfileString(totalsign,"total", Text(outer_count));
+			SetTBProfileString(meta_sign,"total", Text(outer_count));
 			
 			
 		}
@@ -316,7 +335,7 @@ Begin
 			NumericArrayClear(openaccountbuy);
 			NumericArrayClear(openaccountsell);
 			
-			outer_count = Value(GetTBProfileString(totalsign,"total"));
+			outer_count = Value(GetTBProfileString(meta_sign,"total"));
 			For i = 1 To outer_count{
 				restore_type = GetTBProfileString(pinzhong + "_" + Text(i),"type");
 				restore_price = Value(GetTBProfileString(pinzhong + "_" + Text(i),"price"));
@@ -351,11 +370,8 @@ Begin
 			currentBid = Q_BidPrice();
 			
 			
-			proposebuydown = Ceiling(currentAsk/step, 1)*step;
-			proposebuyup = proposebuydown + step;
 			
-			proposesellup = Floor(currentBid/step, 1)*step;
-			proposeselldown = proposesellup - step;
+			
 			
 			
 			proposesellup_flag = (skw_formal_array_functions("contains", openaccountsell, proposesellup) == 1);
@@ -365,31 +381,23 @@ Begin
 			proposebuydown_flag = (skw_formal_array_functions("contains", openaccountbuy, proposebuydown) == 1);
 			
 			
-
-			
-			If(duokongminus>=1){
-				sellprice = Floor(currentBid/step, 1)*step;
-				buyprice = sellprice-step;
-				if(proposebuyup_flag && proposebuydown_flag){
+			If(proposebuyup_flag && proposebuydown_flag && proposesellup_flag && proposeselldown_flag){
 					sellprice = proposebuyup;
 					buyprice = proposeselldown;
-				}
-			
-			}Else If(duokongminus<=-1){
-				buyprice = Ceiling(currentAsk/step, 1)*step;
-				sellprice = buyprice+step;
-				if(proposesellup_flag && proposeselldown_flag){
-					sellprice = proposebuyup;
-					buyprice = proposeselldown;
-				}
-				
 			}Else{
-				
-				if(proposebuyup_flag && proposebuydown_flag && proposesellup_flag && proposeselldown_flag){
-					sellprice = proposebuyup;
-					buyprice = proposeselldown;
-				}Else{
-					if(proposesellup_flag && proposeselldown_flag){
+			
+				If(duokongminus>=1){
+					sellprice = Floor(currentBid/step, 1)*step;
+					buyprice = sellprice-step;
+				}
+				If(duokongminus<=-1){
+					buyprice = Ceiling(currentAsk/step, 1)*step;
+					sellprice = buyprice+step;
+					
+					
+				}
+				If(duokongminus==0){
+					If(proposesellup_flag && proposeselldown_flag){
 						sellprice = proposesellup;
 						buyprice = proposeselldown;
 					}Else If(proposebuyup_flag && proposebuydown_flag){
@@ -400,20 +408,6 @@ Begin
 						buyprice = proposebuydown;
 					}
 				}
-				
-				/*
-				sellprice = Ceiling(currentAsk/step, 1)*step;
-				buyprice = Floor(currentBid/step, 1)*step;
-				
-				if (sellprice == buyprice){
-					rand_num = Rand(0,10);
-					If ( rand_num>=5){
-						buyprice = buyprice - step;
-					}Else{
-						sellprice = sellprice + step;
-					}
-				}*/
-				
 			}
 			
 
@@ -458,7 +452,7 @@ Begin
 			If( buyprice>0 && sellprice>buyprice && CurrentBar > GetGlobalVar(latestoperation) ){
 					FileAppend(outputfilename,"prepare new trade: " + Text(buyprice) + "  "+ Text(sellprice));
 					
-					outer_count = Value(GetTBProfileString(totalsign,"total"));
+					outer_count = Value(GetTBProfileString(meta_sign,"total"));
 					
 					outer_count = outer_count+1;
 					SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "b");
@@ -468,7 +462,7 @@ Begin
 					SetTBProfileString(pinzhong + "_" + Text(outer_count),"type", "s");
 					SetTBProfileString(pinzhong + "_" + Text(outer_count),"price", Text(sellprice)); 
 					
-					SetTBProfileString(totalsign,"total", Text(outer_count));
+					SetTBProfileString(meta_sign,"total", Text(outer_count));
 					
 					SetGlobalVar(latestoperation, CurrentBar);
 			}
