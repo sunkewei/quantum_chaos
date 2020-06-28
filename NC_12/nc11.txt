@@ -1,0 +1,142 @@
+/*  **************************************
+ * Nuclear Version 11.0
+ ******************************************/
+
+Params 
+	
+
+Vars
+	Numeric slots(1);
+	
+	
+	String meta_sign;
+	Numeric buy_price;
+	Numeric sell_price;
+	Numeric chiduo;
+	Numeric buy_status;
+	Numeric sell_status;
+	
+	String outputfilename;
+	String outputtradefilename;
+	
+	
+	Numeric timeholder;
+	String pinzhong;
+	
+	Bool realbuy;
+	Numeric today_lowerlimit;
+	Numeric	today_upperlimit;
+	
+	Numeric CurrentAsk;
+	Numeric CurrentBid;
+	
+	Numeric opencount;
+	Numeric totalposition(0);
+	Numeric i;
+	Numeric nBorS;
+	Numeric nEorE;
+	
+	
+	  
+Begin
+	
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Initialization 
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	
+	////////////////////////////////
+	// Initialize Variables
+	//////////////////////////////// 
+	realbuy = False;
+	pinzhong = Symbol();
+	outputfilename = "c:\\continue_"+pinzhong+".txt";
+	outputtradefilename = "c:\\trade_"+pinzhong+".txt";
+	meta_sign = pinzhong;
+	
+	////////////////////////////////
+	// Trade Protection
+	////////////////////////////////
+	If( BarStatus==2  && AccountDataExist){
+		FileAppend(outputfilename,"======================"+Text(CurrentTime)+"=============================");
+		
+		
+		///////////////////////////////////
+		// Judge whether Account is ready
+		///////////////////////////////////
+		
+		today_lowerlimit = Q_LowerLimit();
+		today_upperlimit = Q_UpperLimit(); 
+		currentAsk = Q_AskPrice();
+		currentBid = Q_BidPrice();
+		
+		If(!(today_lowerlimit > 0 && today_upperlimit > 0 && currentAsk > 0 && currentBid > 0 ) ){
+			FileAppend(outputfilename,"----------account not on, no trading----------");
+			return;
+		}
+		
+	
+
+		/////////////////////////////////////////////
+		// Perform Trading Actions
+		////////////////////////////////////////////
+		
+		slots = Value(GetTBProfileString(meta_sign,"slots"));
+		 
+		
+		timeholder = CurrentTime();
+		buy_price = Value(GetTBProfileString(meta_sign,"bp"));
+		sell_price = Value(GetTBProfileString(meta_sign,"sp"));
+		SetTBProfileString(meta_sign, "cost", Text(buy_price*ContractUnit));
+		chiduo = A_BuyPosition(); 
+		buy_status = 0; 
+		sell_status = 0;
+		
+		
+		If(!(slots>0 && buy_price>0 && sell_price>0 && chiduo>0)){
+			FileAppend(outputfilename,"[not started]buy:" +Text(buy_price)+ "\tsell:" +Text(sell_price)+ "\tposition:"+Text(chiduo) );
+			return;
+		}
+		
+		
+		opencount = A_GetOpenOrderCount();
+		FileAppend(outputfilename,Text(opencount));
+
+		For i = 1 To opencount{
+			nBorS = A_OpenOrderBuyOrSell(i);
+			nEorE = A_OpenOrderEntryOrExit(i);
+			If (nBorS == Enum_Buy() && nEorE==Enum_Entry()){
+				buy_status = 1;
+			}Else If(nBorS==Enum_Sell()&& ( nEorE==Enum_Exit() || nEorE==Enum_ExitToday() ) ){
+				sell_status = 1;
+			} 
+		}
+		
+		If(chiduo<=slots && buy_status==0){
+			If(realbuy==True){
+				A_SendOrder(Enum_Buy,Enum_Entry,slots,buy_price);
+			}Else{
+				FileAppend(outputfilename,pinzhong + "\t" + "++" + Text(buy_price) + "  "+Text(ContractUnit));
+			}
+		}
+		
+		If(chiduo>=2*slots && sell_status ==0){
+								
+			If(realbuy==True){
+				If(A_TodayBuyPosition==0){
+					A_SendOrder(Enum_Sell, Enum_Exit,slots, sell_price);
+				}Else{
+					A_SendOrder(Enum_Sell, Enum_ExitToday,slots, sell_price);
+				}
+			}Else{
+				FileAppend(outputfilename,pinzhong + "\t" + "--" + Text(sell_price) + "  "+Text(ContractUnit));
+			
+			}
+				
+		}
+		
+	}
+	
+
+	 
+	
+End
