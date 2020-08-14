@@ -1,0 +1,237 @@
+//------------------------------------------------------------------------
+// 简称: skwmain
+// 名称: skwmain
+// 类别: 公式应用
+// 类型: 用户应用
+// 输出: Void
+//------------------------------------------------------------------------
+
+
+Params
+	
+Vars
+	//此处添加变量
+	Numeric thres(120);
+	Numeric limit(9);
+	
+	Series<Numeric> skw_close;
+	Series<Numeric> skw_close_raw;
+	
+	Series<Numeric> skw_close_refined;
+	
+	Numeric local_low;
+	Numeric local_high;
+	Numeric direction_low;
+	Numeric direction_high;
+	Numeric direction_diff;
+	Numeric direction_diff_rate;
+	Series<Numeric> direction_final;
+	Series<Numeric> direction_final_sum;
+	
+	
+	Series<Numeric> direction_sign;
+	Series<Numeric> con_sum;
+	Series<Numeric> bound_high;
+	Series<Numeric> bound_low;
+	
+	
+	
+	
+	Numeric direction;
+	Series<Numeric> direction_rate;
+	
+	
+	Series<Numeric> skw_diff_long;
+	Series<Numeric> skw_diff;
+	Series<Numeric> position_sum;
+	Series<Numeric> local_position_raw;
+	Series<Numeric> local_position;
+	Numeric i;
+	
+	
+	Bool buy_entry_flag;
+	Bool sell_entry_flag;
+	
+
+Defs
+	//此处添加公式函数
+	Numeric getLimitedValue(Numeric x,Numeric t_limit)
+	{
+		If(x>t_limit){
+			return t_limit;
+		}Else If(x<-t_limit){
+			return -t_limit;
+		}Else{
+			return x;
+		}
+	}
+	
+
+Events
+	//此处实现事件函数
+	
+	//初始化事件函数，策略运行期间，首先运行且只有一次，应用在订阅数据等操作
+	OnInit()
+	{	
+		
+
+	}
+
+	//在所有的数据源准备完成后调用，应用在数据源的设置等操作
+	OnReady()
+	{
+	}
+
+	//在新bar的第一次执行之前调用一次，参数为新bar的图层数组
+	OnBarOpen(ArrayRef<Integer> indexs)
+	{
+
+	}
+
+	//Bar更新事件函数，参数indexs表示变化的数据源图层ID数组
+	OnBar(ArrayRef<Integer> indexs)
+	{
+		if (bound_high == 0 or bound_low==0){
+			bound_high = Close;
+			bound_low = Close;
+		}
+		direction_sign = 0;
+		
+		skw_close =  AdaptiveMovAvg(Close, 2000, 10, 100);
+		skw_close_refined = AdaptiveMovAvg(skw_close, 500, 10, 100);
+		PlotNumeric("skwclose", skw_close_refined,0, Yellow, 0);
+		direction = sign(LinearRegSlope(skw_close_refined, 30))+sign(LinearRegSlope(skw_close_refined, 300));
+		direction_final = abs(direction)*Sign(direction);
+		direction_final_sum = Summation(direction_final, 1000);
+		direction_sign = 0;
+		if(direction_final_sum > 500){
+			direction_sign = 1;
+		}
+		if(direction_final_sum< -500){
+			direction_sign = -1;
+		}
+		
+		
+		if(direction_sign > 0 and direction_sign[1]<=0 and con_sum>2000 and Close>= bound_high){
+				direction_sign = 1;
+				bound_low = Close*0.97;
+				bound_high = Close*1.03;
+		}Else if(direction_sign < 0 and direction_sign[1]>=0 and con_sum> 2000 and Close<= bound_low){
+				direction_sign = -1;
+				bound_low = Close*0.97;
+				bound_high = Close*1.03;
+		} else if(direction_sign*direction_sign[1]==1){
+			bound_low = min(bound_low[1], Close);
+			bound_high = max(bound_high[1], Close);
+			con_sum = 0;
+		}Else{
+			direction_sign = 0;
+			bound_low = bound_low[1];
+			bound_high = bound_high[1];
+			con_sum = con_sum[1]+1;
+		}
+		if(con_sum % 2000==1999){
+			bound_high = (Highest(Close, 2000) + Lowest(Close, 2000))/2*1.01;
+			bound_low = (Highest(Close, 2000) + Lowest(Close, 2000))/2*0.99;
+		}
+		
+		PlotNumeric("blow", bound_low, 0,Green,0);
+		PlotNumeric("bhigh", bound_high, 0,Red,0);
+		if(direction_sign ==1){
+			PlotBool("buy", True, Low);
+		}
+		if(direction_sign == -1){
+			PlotBool("sell", False, Low);
+		}
+		
+		/*
+		
+		buy_entry_flag = local_position>=limit ;//and direction>5;
+			
+		sell_entry_flag = local_position<=-limit;// and direction<-5;
+		
+		if( buy_entry_flag
+			and MarketPosition==0){
+			Buy(1, close);
+		}
+		
+		if( (Abs(local_position)<=limit/2 )
+				and MarketPosition==1){
+			Sell(1, close);
+			
+			
+		}
+		
+		if( sell_entry_flag
+			and MarketPosition==0){
+			SellShort(1, close);
+		}
+		//if((cross_time_avg > 3 and summation(jump_final, 5)>-3) and MarketPosition==-1){
+		if(	(Abs(local_position)<=limit/2 )
+			and MarketPosition==-1){
+			BuyToCover(1, close);
+			
+			
+		}
+		*/
+		
+		
+			
+		//PlotString("direction", Text(con_sum), High, Yellow);
+		
+		
+		//PlotString("aaa", Text(direction_diff_rate), Low, Yellow);
+		
+	}
+	
+	//持仓更新事件函数，参数pos表示更新的持仓结构体
+	OnPosition(PositionRef pos)
+	{
+		
+	}
+
+	//策略账户仓更新事件函数，参数pos表示更新的账户仓结构体
+	OnStrategyPosition(PositionRef pos)
+	{
+		
+	}
+
+	//委托更新事件函数，参数ord表示更新的委托结构体
+	OnOrder(OrderRef ord)
+	{
+		
+	}
+
+	//成交更新事件函数，参数ordFill表示更新的成交结构体
+	OnFill(FillRef ordFill)
+	{
+		
+	}
+
+	//定时器更新事件函数，参数id表示定时器的编号，millsecs表示定时间的间隔毫秒值
+	OnTimer(Integer id,Integer intervalMillsecs)
+	{
+		
+	}
+
+	//通用事件触发函数，参数evtName为事件名称，参数evtValue为事件内容
+	OnEvent(StringRef evtName,MapRef<String,String> evtValue) 
+	{
+		
+	}
+
+	//当前策略退出时触发
+	OnExit()
+	{
+
+	}
+
+	
+
+
+//------------------------------------------------------------------------
+// 编译版本	2020/07/09 133253
+// 版权所有	timecompression
+// 更改声明	TradeBlazer Software保留对TradeBlazer平台
+//			每一版本的TradeBlazer公式修改和重写的权利
+//------------------------------------------------------------------------
