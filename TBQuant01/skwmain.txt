@@ -6,8 +6,6 @@
 // 类型: 用户应用
 // 输出: Void
 //------------------------------------------------------------------------
-
-
 Params
 	
 Vars
@@ -17,11 +15,10 @@ Vars
 	
 	Series<Numeric> skw_close;
 	Series<Numeric> skw_close_raw;
-	
 	Series<Numeric> skw_close_refined;
 	
-	Numeric local_low;
-	Numeric local_high;
+	Series<Numeric> local_low;
+	Series<Numeric> local_high;
 	Numeric direction_low;
 	Numeric direction_high;
 	Numeric direction_diff;
@@ -49,8 +46,12 @@ Vars
 	Series<Numeric> position_sum;
 	Series<Numeric> local_position_raw;
 	Series<Numeric> local_position;
-	Series<Numeric> general_signal;
+	Series<Numeric> general_signal(0);
+	Series<Numeric> on_extreme(0);
+	Series<Numeric> extreme_sign(0);
 	Numeric i;
+	Numeric percent_base;
+	Numeric percent_factor;
 	
 	Bool pricecrossover;
 	Bool pricecrossunder;
@@ -58,6 +59,9 @@ Vars
 	
 	Bool buy_entry_flag;
 	Bool sell_entry_flag;
+	
+	Numeric trend_factor;
+	
 	
 
 Defs
@@ -87,6 +91,7 @@ Events
 	//在所有的数据源准备完成后调用，应用在数据源的设置等操作
 	OnReady()
 	{
+		
 	}
 
 	//在新bar的第一次执行之前调用一次，参数为新bar的图层数组
@@ -94,36 +99,48 @@ Events
 	{
 
 	}
-
 	//Bar更新事件函数，参数indexs表示变化的数据源图层ID数组
 	OnBar(ArrayRef<Integer> indexs)
 	{
+		percent_base = Average(summation(Abs(PercentChange(Close, 2)),60)/60, 10000)*10000;
+		percent_factor = abs(PercentChange(Close, 2)*10000/percent_base);
+		percent_factor = max(percent_factor/5,1);
+		//calculate extreme_sign
+		on_extreme = 0;
+		if(Close==Highest(Close,4000/BarInterval)){
+			on_extreme = 1;
+		}
+		if(Close==Lowest(Close,4000/BarInterval)){
+			on_extreme = -1;
+		}
+		extreme_sign = sign(Summation(on_extreme, 2000));
+		
+		//calculate direction sign
 		if (bound_high == 0 or bound_low==0){
 			bound_high = Close;
 			bound_low = Close;
 		}
 		direction_sign = 0;
+		skw_close =  AdaptiveMovAvg(Close, 2000/BarInterval, 10/min(BarInterval, 5), 100/min(BarInterval,5));
+		skw_close_refined = AdaptiveMovAvg(skw_close, 1000/BarInterval, 10/min(BarInterval, 5), 100/min(BarInterval,5));
 		
-		skw_close =  AdaptiveMovAvg(Close, 2000, 10, 100);
-		skw_close_refined = AdaptiveMovAvg(skw_close, 1000, 10, 100);
-		
-		direction = sign(LinearRegSlope(skw_close_refined, 30))+sign(LinearRegSlope(skw_close_refined, 300));
+		direction = sign(LinearRegSlope(skw_close_refined, 30/BarInterval))+sign(LinearRegSlope(skw_close_refined, 300/BarInterval));
 		direction_final = abs(direction)*Sign(direction);
-		direction_final_sum = Summation(direction_final, 1000)/2+Summation(direction_final, 500);
+		direction_final_sum = Summation(direction_final, 1000/BarInterval)/2+Summation(direction_final, 500/BarInterval);
 		direction_sign = 0;
-		if(direction_final_sum > 500){
+		if(direction_final_sum > 500/BarInterval){
 			direction_sign = 1;
 		}
-		if(direction_final_sum< -500){
+		if(direction_final_sum< -500/BarInterval){
 			direction_sign = -1;
 		}
 		
 		
-		if(direction_sign > 0 and direction_sign[1]<=0 and con_sum>2000 and Close>= bound_high){
+		if(direction_sign > 0 and direction_sign[1]<=0 and con_sum[1]>2000/BarInterval and Close>= bound_high){
 				direction_sign = 1;
 				bound_low = Close*0.97;
 				bound_high = Close*1.03;
-		}Else if(direction_sign < 0 and direction_sign[1]>=0 and con_sum> 2000 and Close<= bound_low){
+		}Else if(direction_sign < 0 and direction_sign[1]>=0 and con_sum[1]> 2000/BarInterval and Close<= bound_low){
 				direction_sign = -1;
 				bound_low = Close*0.97;
 				bound_high = Close*1.03;
@@ -137,39 +154,62 @@ Events
 			bound_high = bound_high[1];
 			con_sum = con_sum[1]+1;
 		}
-		if(con_sum % 2000==1999){
-			bound_high = (Highest(Close, 2000) + Lowest(Close, 2000))/2*1.01;
-			bound_low = (Highest(Close, 2000) + Lowest(Close, 2000))/2*0.99;
+		if(con_sum % (2000/BarInterval)==(1999/BarInterval-1)){
+			bound_high = (Highest(Close, 2000/BarInterval) + Lowest(Close, 2000/BarInterval))/2*1.01;
+			bound_low = (Highest(Close, 2000/BarInterval) + Lowest(Close, 2000/BarInterval))/2*0.99;
 		}
-		local_high = Average(Close, 2000) + StandardDev(Close,2000)*2;
-		local_low = Average(Close, 2000) - StandardDev(Close,2000)*2;
+		
+		
+		//calculate crossover and crossunder
+		local_high = Average(Close, 2000/BarInterval) + StandardDev(Close,2000/BarInterval)*2;
+		local_low = Average(Close, 2000/BarInterval) - StandardDev(Close,2000/BarInterval)*2;
 		pricecrossover = CrossOver(Close,local_low);
 		pricecrossunder = CrossUnder(Close,local_high);
 		
+		
+		//calculate decision
+		trend_factor = Sign(close-(local_high+local_low)/2) + Sign(local_high+local_low-local_high[1]-local_low[1]);
+		if(trend_factor!=0){
+			trend_factor = Sign(trend_factor);
+		}
+		decision = decision[1] + trend_factor*percent_factor/(1000/BarInterval);
 		If(close>local_high){
-				decision = decision[1] + 1/200;
+				decision = decision[1] + percent_factor/(200/BarInterval);
 			}Else If(close<local_low){
-				decision = decision[1] - 1/200;
+				decision = decision[1] - percent_factor/(200/BarInterval);
 			}Else{
 				decision = decision[1];
 			}
-		
-		
-		If(direction_sign==1 ){
+			
+		If(direction_sign==1){
 			if(pricecrossover){
-				decision = 1.7;
+				decision = 1.8;
 			}
 		}Else If(direction_sign==-1){
 			if(pricecrossunder){
-				decision = -1.7;
+				decision = -1.8;
 			}
 		}
+		decision = Sign(decision) * Min(2, Abs(decision));
 		
 		PlotNumeric("skwclose", skw_close_refined,0, Yellow, 0);
 		PlotNumeric("lhigh", local_high, 0,White,0);
 		PlotNumeric("llow", local_low, 0,White,0);
 		PlotNumeric("blow", bound_low, 0,Green,0);
 		PlotNumeric("bhigh", bound_high, 0,Red,0);
+		//PlotString("direction", Text(round(percent_factor,0)), High, Yellow);
+		
+		if(Abs(decision)>=2){
+			decision = decision+extreme_sign;
+			if(Abs(decision)>=3){
+				decision = Sign(decision)*2;
+			}Else{
+				decision = Sign(decision)*1.95;
+			}
+		}
+		
+		
+		
 		
 		general_signal = general_signal[1];
 		buy_entry_flag = decision>=2 ;//and direction>5;	
@@ -194,6 +234,8 @@ Events
 			BuyToCover(1, close);
 			general_signal = 0;
 		}
+		
+		
 		if(general_signal == 1){
 			PlotBool("buy", True, Low);
 		}
@@ -201,10 +243,11 @@ Events
 			PlotBool("sell", False, Low);
 		}
 		
+		
 		//PlotNumeric("gsignal", general_signal, 0,White,0);
 		
 			
-		//PlotString("direction", Text(round(decision,1)), High, Yellow);
+		//PlotString("direction", Text(on_extreme), High, Yellow);
 		//PlotString("aaa", Text(direction_sign), Low, White);
 		
 	}
