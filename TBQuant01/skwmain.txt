@@ -45,8 +45,17 @@ Vars
 	Numeric stddev_now;
 	Bool stdnormal(True);
 	
+	Numeric high_extreme_count ; 
+	Numeric	low_extreme_count;
+	Numeric	extreme_trend_sign;
+	
 Defs
 	//此处添加公式函数
+	Numeric changed(Numeric newprice, Numeric old){
+		return round((newprice-old)*100/old, 2);
+		
+	}
+	
 	Numeric getProperInterval(Numeric x)
 	{
 		return IntPart(x/BarInterval);
@@ -107,14 +116,28 @@ Events
 		percent_factor = max(percent_base/getBase(),1);
 		//extreme_sign
 		on_extreme = 0;
-		if(Close==Highest(Close,getProperInterval(4000))){
+		if(Close==Highest(Close,getProperInterval(4000))
+		   /*Or
+		   (
+		    Close==Highest(Close,getProperInterval(1000))
+		    && LowestBar(Close, getProperInterval(4000)) < HighestBar(Close, getProperInterval(4000))
+		    && changed(Close, Lowest(Close, getProperInterval(4000)))>2
+		   )*/
+		){
 			on_extreme = 1;
 		}
-		if(Close==Lowest(Close,getProperInterval(4000))){
+		if(Close==Lowest(Close,getProperInterval(4000))
+		  /*Or
+		   (
+		    Close==Lowest(Close,getProperInterval(1000))
+		    && HighestBar(Close, getProperInterval(4000)) < LowestBar(Close, getProperInterval(4000))
+		    && changed(Close, Highest(Close, getProperInterval(4000)))<-2
+		   )*/
+		){
 			on_extreme = -1;
 		}
-		extreme_sign = sign(Summation(on_extreme, getProperInterval(2000)));
-		
+		//extreme_sign = sign(Summation(on_extreme, getProperInterval(500)));
+		extreme_sign = on_extreme;
 		//calculate crossover and crossunder
 		stddev = Max(Close*0.01, StandardDev(Close,getProperInterval(2000)));
 		stddev_now = stddev*1000/Close/stddev_base;
@@ -171,7 +194,11 @@ Events
 		}
 		
 		//trend_factor
-		trend_factor = Sign(close-close_average) + average_trend;// Sign(close_average-close_average[1]);
+		high_extreme_count = CountIf(on_extreme==1, getProperInterval(4000));
+		low_extreme_count = CountIf(on_extreme==-1, getProperInterval(4000));
+		extreme_trend_sign = Sign(high_extreme_count + low_extreme_count);
+		
+		trend_factor = Sign(close-close_average) + average_trend + extreme_trend_sign;// Sign(close_average-close_average[1]);
 		if(trend_factor!=0){
 			trend_factor = Sign(trend_factor);
 		}
@@ -240,15 +267,15 @@ Events
 			//PlotBool("sell", False, Low);
 		}
 		
-		/*
-		if(decision ==2){
+		
+		if(on_extreme == 1){
 			PlotBool("buy", True, Low);
 			
 		}
-		if(stdnormal){
+		if(on_extreme == -1){
 			PlotBool("sell", False, Low);
 		}
-		*/
+		
 		if(abs(general_signal)>abs(general_signal[1])){
 			accu = Sign(general_signal);
 		}Else If(abs(general_signal)>0){
