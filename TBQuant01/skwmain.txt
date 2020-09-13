@@ -9,44 +9,65 @@
 Params
 	
 Vars
-	//此处添加变量
+	Series<Numeric> skw_close;
+	Numeric high_extreme_count ; 
+	Numeric	low_extreme_count;
+	Series<Numeric> on_extreme_raw(0);
+	Series<Numeric> on_extreme(0);
+	Series<Numeric> extreme_sign(0);
+	Numeric last_extreme_low(0);
+	Numeric last_extreme_high(0);
+	Numeric last_extreme;
+	Numeric last_extreme_low_index(0);
+	Numeric last_extreme_high_index(0);
+	Numeric nth_extreme_low_index(0);
+	Numeric nth_extreme_high_index(0);
+	Series<Numeric> extreme_average(0);
+	Numeric extreme_average_low;
+	Numeric extreme_average_high;
+	Series<Numeric> extreme_factor(0);
+	
+	
+	
 	Series<Numeric> local_low_raw;
 	Series<Numeric> local_high_raw;
 	Series<Numeric> local_low;
 	Series<Numeric> local_high;
 	Series<Numeric> close_average;
+	Series<Numeric> average_trend_raw;
 	Series<Numeric> average_trend;
+	Series<Numeric> average_trend_sign;
 	Series<Numeric> stddev;
-	Numeric percent_base;
-	Numeric percent_factor;
-	Numeric percent_devidor(5);
-	Bool pricecrossover;
-	Bool pricecrossunder;
-	Numeric trend_factor;
+	Bool crossup190 ;
+	Bool crossdown380 ;
+	Bool crossdown_190 ;
+	Bool crossup_380 ;
+	
+	Series<Numeric> trend_factor_raw;
+	Series<Numeric> trend_factor;
 	Series<Numeric> decision;
 	Series<Numeric> general_signal(0);
-	Series<Numeric> on_extreme(0);
-	Series<Numeric> extreme_sign(0);
-	Series<Numeric> cross_up(0);
-	Numeric cross_up_sum(0);
-	Series<Numeric> cross_down(0);
-	Numeric cross_down_sum(0);
-	Series<Numeric> accu(0);
 	Series<Numeric> hl_length(1000);
 	
-	//Series<Numeric> abs_change;
-	//Series<Numeric> abs_change_avg;
+	Numeric profit(0);
+	
 
 	Bool buy_entry_flag;
 	Bool sell_entry_flag;
+	Bool buy_exit_flag;
+	Bool sell_exit_flag;
 	Series<Numeric> holdings(0);
 	Numeric units;
 	Numeric stddev_base(5);
 	Numeric stddev_now;
 	Bool stdnormal(True);
+	Series<Numeric> up_start_limit(201);
+	Series<Numeric> up_end_limit(370);
+	Series<Numeric> down_start_limit(-201);
+	Series<Numeric> down_end_limit(-370);
 	
-	Numeric high_extreme_count ; 
-	Numeric	low_extreme_count;
+	
+	
 	Numeric	extreme_trend_sign;
 	
 Defs
@@ -58,235 +79,157 @@ Defs
 	
 	Numeric getProperInterval(Numeric x)
 	{
+		
 		return IntPart(x/BarInterval);
 	}
 	
-	Numeric getBase()
-	{
-		if(BarInterval==1){
-			return 5;
-		}
-		If(BarInterval ==5){
-			return 8;
-		}
-		If(BarInterval ==15){
-			return 13;
-		}
-		If(BarInterval ==30){
-			return 29;
-		}
-		Return 5;
-		 
-	}
+	
 	
 
 Events
-	//此处实现事件函数
-	
-	//初始化事件函数，策略运行期间，首先运行且只有一次，应用在订阅数据等操作
 	OnInit()
 	{	
 		
 
 	}
-
-	//在所有的数据源准备完成后调用，应用在数据源的设置等操作
-	OnReady()
-	{
-		
-	}
-
-	//在新bar的第一次执行之前调用一次，参数为新bar的图层数组
-	OnBarOpen(ArrayRef<Integer> indexs)
-	{
-
-	}
 	//Bar更新事件函数，参数indexs表示变化的数据源图层ID数组
 	OnBar(ArrayRef<Integer> indexs)
 	{
-		hl_length = getProperInterval(2000);
+		// initialize
+		skw_close = Close;
+		//skw_close = Average(Close, getProperInterval(2000));
+		PlotNumeric("close",skw_close);
 		units = intpart(30000/(Close*ContractUnit/10));
-		stddev_base = Round(Average(Max(Close*0.01, StandardDev(Close,getProperInterval(2000)))/Close, getProperInterval(CurrentBar))*1000, 0);
 		general_signal = general_signal[1];
 		if(MarketPosition == 0){
 			general_signal = 0;
 		}
-		//percent factor
-		percent_base = Abs(PercentChange(close, 2)*10000)/5;
-		percent_factor = max(percent_base/getBase(),1);
+		
 		//extreme_sign
-		on_extreme = 0;
-		if(Close==Highest(Close,getProperInterval(4000))
-		   /*Or
-		   (
-		    Close==Highest(Close,getProperInterval(1000))
-		    && LowestBar(Close, getProperInterval(4000)) < HighestBar(Close, getProperInterval(4000))
-		    && changed(Close, Lowest(Close, getProperInterval(4000)))>2
-		   )*/
-		){
-			on_extreme = 1;
+		
+		last_extreme_low_index = Min(getProperInterval(30000),NthCon(on_extreme<0, 1));
+		last_extreme_high_index = Min(getProperInterval(30000),NthCon(on_extreme>0, 1));
+		nth_extreme_low_index = Min(getProperInterval(30000), NthCon(on_extreme<0, 2));
+		nth_extreme_high_index = Min(getProperInterval(30000), NthCon(on_extreme>0, 2));
+		last_extreme_low = skw_close[last_extreme_low_index];
+		last_extreme_high = skw_close[last_extreme_high_index];
+		on_extreme_raw = 0;
+		
+		if(Highest(skw_close, getProperInterval(240))==Highest(skw_close,getProperInterval(1200))){
+			on_extreme_raw = 1;
 		}
-		if(Close==Lowest(Close,getProperInterval(4000))
-		  /*Or
-		   (
-		    Close==Lowest(Close,getProperInterval(1000))
-		    && HighestBar(Close, getProperInterval(4000)) < LowestBar(Close, getProperInterval(4000))
-		    && changed(Close, Highest(Close, getProperInterval(4000)))<-2
-		   )*/
-		){
-			on_extreme = -1;
+		if(Lowest(skw_close, getProperInterval(240))==Lowest(skw_close,getProperInterval(1200))){
+			on_extreme_raw = -1;
 		}
-		//extreme_sign = sign(Summation(on_extreme, getProperInterval(500)));
-		extreme_sign = on_extreme;
-		//calculate crossover and crossunder
-		stddev = Max(Close*0.01, StandardDev(Close,getProperInterval(2000)));
-		stddev_now = stddev*1000/Close/stddev_base;
-		stdnormal = stddev_now<=1;
-		if(not stdnormal){
-			hl_length = hl_length[1]+1;
+
+		high_extreme_count = CountIf(on_extreme>=1, getProperInterval(1200));
+		low_extreme_count = CountIf(on_extreme<=-1, getProperInterval(1200));
+		if(high_extreme_count>=1 or low_extreme_count>=1){
+			on_extreme = 0;
+		}else if(on_extreme_raw>0 and skw_close-skw_close[nth_extreme_high_index]<0){
+			on_extreme = 0;
+		}else if(on_extreme_raw<0 and skw_close-skw_close[nth_extreme_low_index]>0){
+			on_extreme = 0;
 		}else{
-			hl_length = hl_length[1]-1;
+			on_extreme = on_extreme_raw;
 		}
-		hl_length = max(getProperInterval(2000), min(getProperInterval(8000), hl_length));
-		
-		close_average = (Highest(Close, getProperInterval(hl_length)) + Lowest(Close, getProperInterval(hl_length)))/2;// Average(Close, 1000);
-		//close_average = (SwingHigh(1, Close, getProperInterval(1000), getProperInterval(BarCount)) + SwingLow(1, Close, getProperInterval(1000), getProperInterval(BarCount)))/2;// Average(Close, 1000);
-		average_trend = Sign(close_average-close_average[1]);
-		if(average_trend == 0){
-			average_trend = average_trend[1];
-		}
-		
-		
-		local_high_raw = close_average + stddev;
-		local_low_raw = close_average - stddev;
-		local_high = Average(local_high_raw, getProperInterval(70));
-		local_low = Average(local_low_raw, getProperInterval(70));
-		
-		
-		cross_up=0;
-		cross_down = 0;
-		cross_up_sum = Summation(cross_up, getProperInterval(500));
-		cross_down_sum = Summation(cross_down, getProperInterval(500));
-		pricecrossover = CrossOver(Close,local_low);	
-		pricecrossunder = CrossUnder(Close,local_high);
-		
-		if(pricecrossover and cross_up_sum==0 and general_signal==1 and PositionProfit>0){
-			Buy(units, close);
-			cross_up = 1;
-			general_signal = general_signal+1;
-		}
-		if(pricecrossunder and cross_down_sum==0 and general_signal==2 and (not stdnormal)){
-			Sell(units, close);
-			cross_down = -1;
-			general_signal = general_signal-1;
-		}
-		
-		
-		if(pricecrossunder and cross_down_sum==0 and general_signal==-1 and PositionProfit>0){
-			SellShort(units, close);
-			cross_down = -1;
-			general_signal = general_signal-1;
-		}
-		if(pricecrossover and cross_up_sum==0 and general_signal==-2 and (not stdnormal)){
-			BuyToCover(units, close);
-			cross_up = 1;
-			general_signal = general_signal+1;
-		}
-		
-		//trend_factor
-		high_extreme_count = CountIf(on_extreme==1, getProperInterval(4000));
-		low_extreme_count = CountIf(on_extreme==-1, getProperInterval(4000));
-		extreme_trend_sign = Sign(high_extreme_count + low_extreme_count);
-		
-		trend_factor = Sign(close-close_average) + average_trend + extreme_trend_sign;// Sign(close_average-close_average[1]);
-		if(trend_factor!=0){
-			trend_factor = Sign(trend_factor);
-		}
-		
-		
-		//decision
-		If(trend_factor>0){
-			decision = decision[1] + Exp(percent_factor-1)/getProperInterval(1000);
-		}Else If(trend_factor<0){
-			decision = decision[1] - Exp(percent_factor-1)/getProperInterval(1000);
+		extreme_factor=0;
+		if(on_extreme==1){
+			extreme_factor = 2;
+		}Else If(on_extreme==-1){
+			extreme_factor = -2;
 		}Else{
-			decision = decision[1];
-		}
-		
-		decision = Sign(decision) * Min(2, Abs(decision));
-		
-		
-		PlotNumeric("lhigh", local_high, 0,White,0);
-		PlotNumeric("llow", local_low, 0,White,0);
-		PlotNumeric("avg", close_average, 0,Yellow,0);
-		
-		//PlotString("direction", Text(round(percent_factor,0)), High, Yellow);
-		
-		if(Abs(decision)>=2 ){
-			decision = decision+extreme_sign;
-			if(Abs(decision)>=3){
-				decision = Sign(decision)*2;
-			}Else{
-				decision = Sign(decision)*1.97;
+			extreme_factor = extreme_factor[1];
+			if(extreme_factor[1]>0 and Close<last_extreme_high){
+				extreme_factor = Max(0,extreme_factor[1]-(1/getProperInterval(1800)));
+			}
+			if(extreme_factor[1]<0 and close>last_extreme_low){
+				extreme_factor = Min(0,extreme_factor[1]+(1/getProperInterval(1800)));
 			}
 		}
+		extreme_sign = extreme_factor;
 		
 		
 		
 		
 		
-		buy_entry_flag = decision>=2 and stdnormal;//and direction>5;	
-		sell_entry_flag = decision<=-2 and stdnormal;// and direction<-5;
-		if( buy_entry_flag
-			and MarketPosition==0){
+		//average trend
+		hl_length = getProperInterval(2000);
+		stddev = Max(skw_close*0.01, StandardDev(skw_close,hl_length));
+		close_average = Average(skw_close, hl_length);
+		average_trend_raw = (skw_close - close_average)/stddev;
+		if(Abs(average_trend_raw)<0.3){
+			average_trend_raw = 0;
+		}
+		//average_trend_raw = Sign(average_trend_raw)*Exp(average_trend_raw)/getProperInterval(1800);
+		//average_trend = Sign(average_trend[1] + average_trend_raw)*Min(Abs(average_trend[1] + average_trend_raw), 7);
+		average_trend_sign = average_trend_sign[1]+ average_trend_raw;
+		if(average_trend_sign>2){
+			average_trend_sign = 2;
+		}
+		if(average_trend_sign<-2){
+			average_trend_sign = -2;
+		}
+		
+		
+		//calculate crossover and crossunder
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		trend_factor_raw = (average_trend_sign + extreme_sign)*100;
+		
+		trend_factor = trend_factor_raw;
+		
+		{
+			
+		if(trend_factor > 0){
+					PlotBool("buy", True, Low);			
+				}
+				if(trend_factor < 0){
+					PlotBool("sell", False, Low);
+				}
+		
+		}
+		crossup190 = CrossOver(trend_factor,up_start_limit);
+		crossdown380 = CrossUnder(trend_factor,up_end_limit);
+		crossdown_190 = CrossUnder(trend_factor,down_start_limit);
+		crossup_380 = CrossOver(trend_factor,down_end_limit);		
+		PlotString("accu", Text(round(trend_factor, 0)), high);
+		
+		buy_entry_flag = crossup190;
+		buy_exit_flag = crossdown380 or trend_factor<0;
+		sell_entry_flag = crossdown_190;
+		sell_exit_flag = crossup_380 or trend_factor>0;
+		if(MarketPosition!=0){
+			profit = PercentChange(Close,BarsSinceEntry)*MarketPosition*100;
+		}
+		Print(text(profit));
+		if( buy_entry_flag and MarketPosition==0){
 			Buy(units, close);
 			general_signal = 1;
 		}
-		if( decision<=0.1 
-				and MarketPosition==1){
+		if( buy_exit_flag and MarketPosition==1){
 			Sell(0, close);
 			general_signal=0;
 		}
-		if( sell_entry_flag
-			and MarketPosition==0){
+		if( sell_entry_flag and MarketPosition==0){
 			SellShort(units, close);
 			general_signal=-1;
 		}
-		if(	decision>=-0.1
-			and MarketPosition==-1){
+		if(	sell_exit_flag and MarketPosition==-1){
 			BuyToCover(0, close);
 			general_signal = 0;
 		}
 		
 		
-		if(general_signal >= 1){
-			//PlotBool("buy", True, Low);
-			
-		}
-		if(general_signal <= -1){
-			//PlotBool("sell", False, Low);
-		}
 		
-		
-		if(on_extreme == 1){
-			PlotBool("buy", True, Low);
-			
-		}
-		if(on_extreme == -1){
-			PlotBool("sell", False, Low);
-		}
-		
-		if(abs(general_signal)>abs(general_signal[1])){
-			accu = Sign(general_signal);
-		}Else If(abs(general_signal)>0){
-			accu = accu[1]+Sign(general_signal);
-		}Else{
-			accu = 10000;
-		}
-		//PlotString("accu", Text(round(Average(stddev/Close, getProperInterval(10000)), 3)), high);
-		//PlotString("accu", Text(round(trend_factor, 0)), high);
-		//PlotNumeric("accu", accu);
-		//PlotNumeric("accuabs", abs(accu));
 	}
 		
 	
