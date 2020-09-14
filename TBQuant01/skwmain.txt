@@ -38,10 +38,6 @@ Vars
 	Series<Numeric> average_trend;
 	Series<Numeric> average_trend_sign;
 	Series<Numeric> stddev;
-	Bool crossup190 ;
-	Bool crossdown380 ;
-	Bool crossdown_190 ;
-	Bool crossup_380 ;
 	
 	Series<Numeric> trend_factor_raw;
 	Series<Numeric> trend_factor;
@@ -115,10 +111,10 @@ Events
 		last_extreme_high = skw_close[last_extreme_high_index];
 		on_extreme_raw = 0;
 		
-		if(Highest(skw_close, getProperInterval(240))==Highest(skw_close,getProperInterval(1200))){
+		if(Highest(skw_close, getProperInterval(240))==Highest(skw_close,getProperInterval(4800))){
 			on_extreme_raw = 1;
 		}
-		if(Lowest(skw_close, getProperInterval(240))==Lowest(skw_close,getProperInterval(1200))){
+		if(Lowest(skw_close, getProperInterval(240))==Lowest(skw_close,getProperInterval(4800))){
 			on_extreme_raw = -1;
 		}
 
@@ -135,24 +131,20 @@ Events
 		}
 		extreme_factor=0;
 		if(on_extreme==1){
-			extreme_factor = 2;
+			extreme_factor = 1/getProperInterval(1800);
 		}Else If(on_extreme==-1){
-			extreme_factor = -2;
+			extreme_factor = -1/getProperInterval(1800);
 		}Else{
 			extreme_factor = extreme_factor[1];
-			if(extreme_factor[1]>0 and Close<last_extreme_high){
-				extreme_factor = Max(0,extreme_factor[1]-(1/getProperInterval(1800)));
+			if(extreme_factor[1]>0 and Close>last_extreme_high){
+				extreme_factor = Min(1,extreme_factor[1]+(1/getProperInterval(1800)));
 			}
-			if(extreme_factor[1]<0 and close>last_extreme_low){
-				extreme_factor = Min(0,extreme_factor[1]+(1/getProperInterval(1800)));
+			if(extreme_factor[1]<0 and close<last_extreme_low){
+				extreme_factor = Max(-1,extreme_factor[1]-(1/getProperInterval(1800)));
 			}
 		}
 		extreme_sign = extreme_factor;
-		
-		
-		
-		
-		
+	
 		//average trend
 		hl_length = getProperInterval(2000);
 		stddev = Max(skw_close*0.01, StandardDev(skw_close,hl_length));
@@ -161,56 +153,28 @@ Events
 		if(Abs(average_trend_raw)<0.3){
 			average_trend_raw = 0;
 		}
-		//average_trend_raw = Sign(average_trend_raw)*Exp(average_trend_raw)/getProperInterval(1800);
-		//average_trend = Sign(average_trend[1] + average_trend_raw)*Min(Abs(average_trend[1] + average_trend_raw), 7);
-		average_trend_sign = average_trend_sign[1]+ average_trend_raw;
+		average_trend_sign = average_trend_sign[1]+ average_trend_raw/getProperInterval(1800);
 		if(average_trend_sign>2){
 			average_trend_sign = 2;
 		}
 		if(average_trend_sign<-2){
 			average_trend_sign = -2;
 		}
-		
-		
-		//calculate crossover and crossunder
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+	
 		trend_factor_raw = (average_trend_sign + extreme_sign)*100;
-		
-		trend_factor = trend_factor_raw;
-		
-		{
-			
-		if(trend_factor > 0){
-					PlotBool("buy", True, Low);			
-				}
-				if(trend_factor < 0){
-					PlotBool("sell", False, Low);
-				}
-		
+		if(Abs(trend_factor_raw)<200){
+			trend_factor = 0;
+		}Else{
+			trend_factor = trend_factor_raw;
 		}
-		crossup190 = CrossOver(trend_factor,up_start_limit);
-		crossdown380 = CrossUnder(trend_factor,up_end_limit);
-		crossdown_190 = CrossUnder(trend_factor,down_start_limit);
-		crossup_380 = CrossOver(trend_factor,down_end_limit);		
-		PlotString("accu", Text(round(trend_factor, 0)), high);
 		
-		buy_entry_flag = crossup190;
-		buy_exit_flag = crossdown380 or trend_factor<0;
-		sell_entry_flag = crossdown_190;
-		sell_exit_flag = crossup_380 or trend_factor>0;
+		buy_entry_flag = trend_factor>200;
+		buy_exit_flag = trend_factor<0;
+		sell_entry_flag = trend_factor<-200;
+		sell_exit_flag = trend_factor>0;
 		if(MarketPosition!=0){
 			profit = PercentChange(Close,BarsSinceEntry)*MarketPosition*100;
 		}
-		Print(text(profit));
 		if( buy_entry_flag and MarketPosition==0){
 			Buy(units, close);
 			general_signal = 1;
@@ -227,6 +191,22 @@ Events
 			BuyToCover(0, close);
 			general_signal = 0;
 		}
+		{
+			
+		if(trend_factor > 0){
+					PlotBool("buy", True, Low);			
+				}
+				if(trend_factor < 0){
+					PlotBool("sell", False, Low);
+				}
+				//PlotString("accu", Text(round(extreme_sign*100, 0)), high);
+				//PlotString("accu", Text(round(average_trend_sign*100, 0)), high, Yellow,0);
+				//PlotString("accu", Text(round(trend_factor, 0)), high, Yellow,0);
+		}
+		/*
+		PlotNumeric("mp", MarketPosition*trend_factor);
+		PlotNumeric("limit", 0);
+		*/
 		
 		
 		
