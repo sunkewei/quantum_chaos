@@ -9,260 +9,294 @@
 Params
 	
 Vars
+	Numeric scorelimit(3);
+	Series<Numeric> daybars(0);
+	Numeric bar_per_day;
 	Series<Numeric> skw_close;
-	Numeric high_extreme_count ; 
-	Numeric	low_extreme_count;
-	Series<Numeric> on_extreme_raw(0);
-	Series<Numeric> on_extreme(0);
-	Series<Numeric> extreme_sign(0);
-	Numeric last_extreme_low(0);
-	Numeric last_extreme_high(0);
-	Numeric last_extreme;
-	Numeric last_extreme_low_index(0);
-	Numeric last_extreme_high_index(0);
-	Numeric nth_extreme_low_index(0);
-	Numeric nth_extreme_high_index(0);
-	Series<Numeric> extreme_average(0);
-	Numeric extreme_average_low;
-	Numeric extreme_average_high;
-	Series<Numeric> extreme_factor(0);
+	
+	Series<Numeric> increase_step(1);
+	
+	Series<Numeric> cum_density(50);
+	Numeric cum_density_sign_raw_sum;
+	Numeric cum_density_sign_sum;
+	Series<Numeric> cum_density_sign_raw(0);
+	Series<Numeric> cum_density_sign(0);
+	Numeric cum_density_period(0);
+	Numeric idx;
+	
+	Numeric up_bound(0);
+	Numeric low_bound(0);
+	
+	Series<Numeric> keep_count(0);
+	Series<Numeric> posi_factor(0);
+	Series<Numeric> posi_situation(0);
+	
+	Series<Numeric> stair_situation(0);
+	Series<Numeric> score(0);
+	Numeric final_score(15);
+	Numeric color;
 	
 	
 	
-	Series<Numeric> local_low_raw;
-	Series<Numeric> local_high_raw;
-	Series<Numeric> local_low;
-	Series<Numeric> local_high;
-	Series<Numeric> close_average;
-	Series<Numeric> average_trend_raw;
-	Series<Numeric> average_trend;
-	Series<Numeric> average_trend_sign;
-	Series<Numeric> stddev;
-	
-	Series<Numeric> trend_factor_raw;
-	Series<Numeric> trend_factor;
-	Series<Numeric> decision;
-	Series<Numeric> general_signal(0);
-	Series<Numeric> hl_length(1000);
+	Series<Numeric> local_low(0);
+	Series<Numeric> local_high(0);
+	Series<Numeric> history_low(0);
+	Series<Numeric> history_high(0);
+	Series<Numeric> change_low(0);
+	Series<Numeric> change_high(0);
+	Series<Numeric> change_gap(0);
+	Series<Numeric> center(0);
 	
 	Numeric profit(0);
-	
-
 	Bool buy_entry_flag;
 	Bool sell_entry_flag;
 	Bool buy_exit_flag;
 	Bool sell_exit_flag;
-	Series<Numeric> holdings(0);
 	Numeric units;
-	Numeric stddev_base(5);
-	Numeric stddev_now;
-	Bool stdnormal(True);
-	Series<Numeric> up_start_limit(201);
-	Series<Numeric> up_end_limit(370);
-	Series<Numeric> down_start_limit(-201);
-	Series<Numeric> down_end_limit(-370);
+	Numeric qw;
+	Numeric bw;
+	Numeric sw;
+	Numeric gw;
 	
+	Series<Numeric> current_status(0);
+	Numeric attention(0);
+	Numeric zhenfu(0);
 	
-	
-	Numeric	extreme_trend_sign;
 	
 Defs
 	//此处添加公式函数
-	Numeric changed(Numeric newprice, Numeric old){
-		return round((newprice-old)*100/old, 2);
-		
-	}
-	
-	Numeric getProperInterval(Numeric x)
+	/*
+	Numeric addDigit(Numeric x)
 	{
-		
-		return IntPart(x/BarInterval);
-	}
-	
-	
-	
-
+		Return IntPart(x/1000) + IntPart((x%1000)/100) + IntPart((x%100)/10) + IntPart((x%10)); 
+	}*/
 Events
-	OnInit()
-	{	
-		
-
-	}
+	
 	//Bar更新事件函数，参数indexs表示变化的数据源图层ID数组
 	OnBar(ArrayRef<Integer> indexs)
 	{
 		// initialize
+		stair_situation = 0;
+		posi_situation = 0;
+		posi_factor = 0;
+		keep_count = keep_count[1];
+		current_status = current_status[1];
+		daybars = DayBarsNumI(0, 1);
+		bar_per_day = Highest(daybars, daybars[1]*5);
+		zhenfu = (Highest(Close,bar_per_day*20)-Lowest(Close,bar_per_day*20))*0.9/Highest(Close,bar_per_day*20);
+		up_bound = 1+zhenfu/2;//1.015;
+		low_bound = 1-zhenfu/2;//0.985;
+		
+		if(local_high == 0 and local_low == 0){
+			center = Close;
+			local_high = Close*up_bound;
+			local_low = Close*low_bound;
+			history_high = Close*up_bound;
+			history_low = Close*low_bound;
+			change_high = Close;
+			change_low = Close;
+		}Else{
+			local_high = local_high[1];
+			local_low = local_low[1];
+			history_high = history_high[1];
+			history_low = history_low[1];
+			change_high = change_high[1];
+			change_low = change_low[1];
+			center = center[1];
+			score = score[1];
+			change_gap = 0;
+		}
+		
+		
 		skw_close = Close;
-		//skw_close = Average(Close, getProperInterval(2000));
-		PlotNumeric("close",skw_close);
-		units = intpart(30000/(Close*ContractUnit/10));
-		general_signal = general_signal[1];
-		if(MarketPosition == 0){
-			general_signal = 0;
+		units = round((10000/(Close*ContractUnit/10)),0);
+		
+		increase_step = Abs(PercentChange(skw_close, 1));
+		increase_step = round(increase_step*1000, 1); 
+		cum_density_period = 0;
+		idx = bar_per_day*20;//Max(keep_count, 10);
+		cum_density = NormalCumDensity(skw_close, idx)*100 -50;
+		if(Abs(cum_density)<=30){
+			cum_density_sign_raw = 1;
+		}Else{
+			cum_density_sign_raw = 0;
+		}
+		cum_density_sign = 0;
+		cum_density_sign_raw_sum = Summation(cum_density_sign_raw, intpart(bar_per_day*2));
+		if(cum_density_sign_raw==1 and cum_density_sign_raw_sum==1){
+			cum_density_sign =1;
+		}
+		cum_density_sign_sum = Summation(cum_density_sign, bar_per_day*3);
+		keep_count = keep_count[1]+increase_step/bar_per_day;
+		if(cum_density_sign==1){
+			PlotBool("buy", True, Low);
+			/*if(center == local_low){
+						local_high = center*up_bound*up_bound;
+					}Else If(center == local_high){
+						local_low = center*low_bound*low_bound;
+					}Else{
+						local_high = center*up_bound;
+						local_low = center*low_bound;
+					}*/
 		}
 		
-		//extreme_sign
-		
-		last_extreme_low_index = Min(getProperInterval(30000),NthCon(on_extreme<0, 1));
-		last_extreme_high_index = Min(getProperInterval(30000),NthCon(on_extreme>0, 1));
-		nth_extreme_low_index = Min(getProperInterval(30000), NthCon(on_extreme<0, 2));
-		nth_extreme_high_index = Min(getProperInterval(30000), NthCon(on_extreme>0, 2));
-		last_extreme_low = skw_close[last_extreme_low_index];
-		last_extreme_high = skw_close[last_extreme_high_index];
-		on_extreme_raw = 0;
-		
-		if(Highest(skw_close, getProperInterval(240))==Highest(skw_close,getProperInterval(4800))){
-			on_extreme_raw = 1;
+		//If(skw_close > local_high and NormalCumDensity(skw_close,IntPart(bar_per_day/10))*100>=80){
+		If(skw_close > history_high){
+			posi_situation = 1;
+			history_high = skw_close;
+		//}Else If(skw_close<local_low and NormalCumDensity(skw_close,IntPart(bar_per_day/10))*100<=20){
+		}Else If(skw_close<history_low){
+			posi_situation = -1;
+			history_low = skw_close;
+		}Else{
+			posi_situation = 0;
 		}
-		if(Lowest(skw_close, getProperInterval(240))==Lowest(skw_close,getProperInterval(4800))){
-			on_extreme_raw = -1;
+		if(posi_situation!=0){
+			//PlotString("increase_step", Text(increase_step), high, Yellow,0);
+		}
+		posi_factor = posi_factor[1]+posi_situation*increase_step/bar_per_day;
+		/*if(skw_close>local_low and skw_close<local_high){
+			posi_factor = 0;
+		}*/
+		
+		if((cum_density_sign_sum>=1 and cum_density_sign==1 and keep_count>2) or Abs(posi_factor[1])>=1.5){
+				
+				If(skw_close>local_high ){
+					stair_situation = 1;
+				}Else If(skw_close<local_low ){
+					stair_situation = -1;
+				}Else{
+					stair_situation = 0;
+					
+				}
+				if(stair_situation!=0){
+					center = skw_close;
+					history_high = local_high = center*up_bound;
+					history_low = local_low = center*low_bound;
+					history_high = history_low = center;
+					change_high = max(center, center[1]);
+					change_low = min(center, center[1]);
+					change_gap = (center-center[1])*100/skw_close;
+					PlotString("accu", Text(round(zhenfu*100,1)), high, Yellow,0);
+					posi_factor = 0;
+					keep_count = 0;
+				}
+				
+		}
+		change_gap = change_gap[1]+change_gap;
+		
+		if(stair_situation!=0 and change_gap*stair_situation>0){	
+			if(Abs(change_gap)>3){
+				if(Abs(change_gap)>6){
+					change_gap = change_gap/2;
+				}
+				score = score[1]*10%1000 + (10-(stair_situation%10+10)%10);	
+				if(stair_situation==1){
+					center = skw_close;
+					history_high = local_high = skw_close*up_bound*up_bound;
+					history_low = local_low = skw_close;
+					history_high = history_low = center;
+				}
+				if(stair_situation==-1){
+					center = skw_close;
+					history_high = local_high = skw_close;
+					history_low = local_low = skw_close*low_bound*low_bound;
+					history_high = history_low = center;
+				}
+			}
 		}
 
-		high_extreme_count = CountIf(on_extreme>=1, getProperInterval(1200));
-		low_extreme_count = CountIf(on_extreme<=-1, getProperInterval(1200));
-		if(high_extreme_count>=1 or low_extreme_count>=1){
-			on_extreme = 0;
-		}else if(on_extreme_raw>0 and skw_close-skw_close[nth_extreme_high_index]<0){
-			on_extreme = 0;
-		}else if(on_extreme_raw<0 and skw_close-skw_close[nth_extreme_low_index]>0){
-			on_extreme = 0;
-		}else{
-			on_extreme = on_extreme_raw;
+		
+		
+		
+		qw = IntPart(score/1000);
+		bw = IntPart((score%1000)/100);
+		sw = IntPart((score%100)/10);
+		gw = IntPart((score%10));
+		final_score =  qw + bw + sw + gw ;//+ (abs(sw-gw)+abs(sw-bw))*(sign(gw-sw) + sign(sw-bw))/2;
+		/*buy_entry_flag = final_score>=21 and score%100==99 and score>100;
+		buy_exit_flag = final_score<=13;
+		sell_entry_flag = final_score<=5 and score%100==11 and score>100;
+		sell_exit_flag = final_score>=9;*/
+		buy_entry_flag = change_gap>1 and gw==9;
+		buy_exit_flag = change_gap<0;
+		sell_entry_flag = change_gap<-1 and gw==1;
+		sell_exit_flag = change_gap>0;
+		
+		if( buy_entry_flag ){
+			current_status = 1;
+			//Buy(units, close);
 		}
-		extreme_factor=0;
-		if(on_extreme==1){
-			extreme_factor = 1/getProperInterval(1800);
-		}Else If(on_extreme==-1){
-			extreme_factor = -1/getProperInterval(1800);
-		}Else{
-			extreme_factor = extreme_factor[1];
-			if(extreme_factor[1]>0 and Close>last_extreme_high){
-				extreme_factor = Min(1,extreme_factor[1]+(1/getProperInterval(1800)));
-			}
-			if(extreme_factor[1]<0 and close<last_extreme_low){
-				extreme_factor = Max(-1,extreme_factor[1]-(1/getProperInterval(1800)));
-			}
+		if( buy_exit_flag and current_status[1]==1){
+			current_status = 0;
+			//Sell(0, close);
 		}
-		extreme_sign = extreme_factor;
-	
-		//average trend
-		hl_length = getProperInterval(2000);
-		stddev = Max(skw_close*0.01, StandardDev(skw_close,hl_length));
-		close_average = Average(skw_close, hl_length);
-		average_trend_raw = (skw_close - close_average)/stddev;
-		if(Abs(average_trend_raw)<0.3){
-			average_trend_raw = 0;
+		if( sell_entry_flag ){
+			current_status = -1;
+			//SellShort(units, close);
 		}
-		average_trend_sign = average_trend_sign[1]+ average_trend_raw/getProperInterval(1800);
-		if(average_trend_sign>2){
-			average_trend_sign = 2;
-		}
-		if(average_trend_sign<-2){
-			average_trend_sign = -2;
-		}
-	
-		trend_factor_raw = (average_trend_sign + extreme_sign)*100;
-		if(Abs(trend_factor_raw)<200){
-			trend_factor = 0;
-		}Else{
-			trend_factor = trend_factor_raw;
+		if(	sell_exit_flag and current_status[1]==-1){
+			current_status = 0;
+			//BuyToCover(0, close);
 		}
 		
-		buy_entry_flag = trend_factor>200;
-		buy_exit_flag = trend_factor<0;
-		sell_entry_flag = trend_factor<-200;
-		sell_exit_flag = trend_factor>0;
-		if(MarketPosition!=0){
-			profit = PercentChange(Close,BarsSinceEntry)*MarketPosition*100;
+		if(current_status==1){
+			if((skw_close<local_low or keep_count==0) and MarketPosition<=0){
+				Buy(units, close);
+			}
+			if(skw_close>local_high){
+				sell(0, close);
+			}
 		}
-		if( buy_entry_flag and MarketPosition==0){
-			Buy(units, close);
-			general_signal = 1;
+		if(current_status==-1){
+			if(skw_close<local_low){
+				BuyToCover(0, close);
+			}
+			if((skw_close>local_high or keep_count==0) and MarketPosition>=0){
+				SellShort(units, close);
+			}
 		}
-		if( buy_exit_flag and MarketPosition==1){
-			Sell(0, close);
-			general_signal=0;
-		}
-		if( sell_entry_flag and MarketPosition==0){
-			SellShort(units, close);
-			general_signal=-1;
-		}
-		if(	sell_exit_flag and MarketPosition==-1){
+		if(current_status==0 and MarketPosition!=0){
 			BuyToCover(0, close);
-			general_signal = 0;
+			sell(0, close);
 		}
-		{
-			
-		if(trend_factor > 0){
-					PlotBool("buy", True, Low);			
-				}
-				if(trend_factor < 0){
-					PlotBool("sell", False, Low);
-				}
-				//PlotString("accu", Text(round(extreme_sign*100, 0)), high);
-				//PlotString("accu", Text(round(average_trend_sign*100, 0)), high, Yellow,0);
-				//PlotString("accu", Text(round(trend_factor, 0)), high, Yellow,0);
+		
+		
+		//PlotString("accu", Text(fast_slow_ratio), high, Yellow,0);
+		if(current_status==1){
+			color = Red;
+		}Else If(current_status==-1){
+			color = Green;
+		}Else{
+			color = Yellow;
 		}
-		/*
-		PlotNumeric("mp", MarketPosition*trend_factor);
-		PlotNumeric("limit", 0);
-		*/
+		if(MarketPosition!=0 and ((PercentChange(Close,BarsSinceEntry)<0 or (BarsSinceEntry/bar_per_day)<2))){
+			attention = 1;
+		}Else{
+			attention = 0;
+		}
 		
+		
+		//PlotString("score", Text(score), high, Yellow,0);
+		PlotNumeric("local_high", local_high, 0, color,0);
+		PlotNumeric("local_low", local_low, 0, color,0);
+		//PlotNumeric("change_high", change_high, 0, Blue,0);
+		//PlotNumeric("change_low", change_low, 0, Blue,0);
+		//PlotNumeric("history_high", history_high, 0, Blue,0);
+		//PlotNumeric("history_low", history_low, 0, Blue,0);
+		PlotNumeric("center", center, 0, color,0);
+		//PlotNumeric("attention", attention);
+		//PlotNumeric("limit", 1);
 		
 		
 	}
 		
 	
-	
-	//持仓更新事件函数，参数pos表示更新的持仓结构体
-	OnPosition(PositionRef pos)
-	{
-		
-	}
-
-	//策略账户仓更新事件函数，参数pos表示更新的账户仓结构体
-	OnStrategyPosition(PositionRef pos)
-	{
-		
-	}
-
-	//委托更新事件函数，参数ord表示更新的委托结构体
-	OnOrder(OrderRef ord)
-	{
-		
-	}
-
-	//成交更新事件函数，参数ordFill表示更新的成交结构体
-	OnFill(FillRef ordFill)
-	{
-		
-	}
-
-	//定时器更新事件函数，参数id表示定时器的编号，millsecs表示定时间的间隔毫秒值
-	OnTimer(Integer id,Integer intervalMillsecs)
-	{
-		
-	}
-
-	//通用事件触发函数，参数evtName为事件名称，参数evtValue为事件内容
-	OnEvent(StringRef evtName,MapRef<String,String> evtValue) 
-	{
-		
-	}
-
-	//当前策略退出时触发
-	OnExit()
-	{
-
-	}
-
-	
-
-
 //------------------------------------------------------------------------
 // 编译版本	2020/07/09 133253
 // 版权所有	timecompression
 // 更改声明	TradeBlazer Software保留对TradeBlazer平台
 //			每一版本的TradeBlazer公式修改和重写的权利
 //------------------------------------------------------------------------
+
 
