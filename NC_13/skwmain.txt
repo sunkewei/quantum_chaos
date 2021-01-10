@@ -12,7 +12,7 @@ Vars
 	Numeric scorelimit(3);
 	NumericSeries daybars(0); 
 	Numeric bar_per_day;
-	
+	 
 	NumericSeries skw_close;
 	
 	NumericSeries skw_close_mom;
@@ -26,9 +26,13 @@ Vars
 	NumericSeries skw_close_medium_up;
 	NumericSeries skw_close_medium_down;
 	
+	NumericSeries backfall;
+	
 	
 	NumericSeries last_buy_count;
 	NumericSeries last_sell_count;
+	
+	NumericSeries ping_price(0);
 	
 	
 	
@@ -100,6 +104,8 @@ Begin
 			SetGlobalVar(1, 1);
 			skw_close_mom = Close;
 			skw_close_mom_small = Close;
+			ping_price = close;
+			backfall = close;
 			
 			last_buy_count = -1;
 			last_sell_count = -1;
@@ -109,6 +115,8 @@ Begin
 			virtual_account_position = 0;
 			return;
 		}
+		ping_price = ping_price[1];
+		backfall = backfall[1];
 		virtual_account_position = virtual_account_position[1];
 		skw_close_mom_change = (skw_close - skw_close[15*bar_per_day] + skw_close-skw_close[10*bar_per_day])/(25*bar_per_day);
 		skw_close_mom = skw_close_mom[1]+ skw_close_mom_change;
@@ -181,6 +189,7 @@ Begin
 		if(virtual_account_position==1 and MarketPosition<=0){
 				If(last_buy_count<2 and skw_close_mom_change_extreme>0){
 					Buy(units, Close);
+					backfall = Close;
 				}
 				If(last_buy_count>2){
 					last_buy_count = 0;
@@ -199,10 +208,17 @@ Begin
 		if(virtual_account_position==-1 and MarketPosition>=0){
 			If(last_sell_count<2  and skw_close_mom_change_extreme<0){
 				SellShort(units, close);
+				backfall = Close;
 			}
 			If(last_sell_count>2){
 				last_sell_count = 0;
 			}
+		}
+		
+		if( (MarketPosition>0 and (close-backfall)*100/backfall<-2)
+			or (MarketPosition<0 and (close-backfall)*100/backfall>2)){
+			ping_price = ping_price*(1-0.7/100*MarketPosition);
+			backfall = Close;
 		}
 		
 		//if(virtual_account_position == -1 and MarketPosition>=0){
@@ -219,22 +235,20 @@ Begin
 		If(MarketPosition!=0){
 			profit = (Close-close[BarsSinceLastEntry+1])*100/Close[BarsSinceLastEntry+1];
 			
-			if(profit*MarketPosition>=profit_limit){
-				If(MarketPosition==1  and virtual_account_position<1){
+			//if(profit*MarketPosition>=profit_limit){
+				If(MarketPosition==1 and Close>ping_price and BarsSinceLastEntry>2 ){
 					last_buy_count = 0;
 					sell(0, close);
 					
 				}
-				If(MarketPosition==-1  and virtual_account_position>-1){
+				If(MarketPosition==-1  and Close<ping_price and BarsSinceLastEntry>2){
 					last_sell_count = 0;
 					BuyToCover(0, close);
 					
 				}
-				If(profit*MarketPosition<-4){
-					last_buy_count = 3;
-				}
-			}
-			if( profit*MarketPosition<-4){
+				
+			//}
+			if( profit*MarketPosition<-4.1 and BarsSinceLastEntry>2){
 				If(MarketPosition==1){
 					sell(0, close);
 				}
@@ -273,12 +287,26 @@ Begin
 		}
 		profit_percent = (closeline-openline)*100/openline;
 		profit_money = (closeline-openline)*posi_series[2]*units*ContractUnit;
+		If(attention ==1 and attention[1]==1 and attention[2]==0 ){
+
+				If(MarketPosition > 0 ){
+					ping_price = close[1]*(1+profit_limit/100);
+					
+				}Else If(MarketPosition < 0 ){
+					ping_price = close[1]*(1-profit_limit/100);
+					
+				}
+				
+			
+		}
 		If(attention ==1 and attention[1]==1 and attention[2]==0 and BarStatus==2){
 			if(CurrentBar > GetGlobalVar(1)){
 				outputstr = ":star:";
 				If(MarketPosition > 0){
+					ping_price = close[1]*(1+profit_limit/100);
 					outputstr = outputstr + "买 ";
 				}Else If(MarketPosition < 0){
+					ping_price = close[1]*(1-profit_limit/100);
 					outputstr = outputstr + "卖 ";
 				}
 				
@@ -303,8 +331,8 @@ Begin
 		//PlotNumeric("closetest1",skw_close_mom_small,0, White);
 		//PlotNumeric("closetest2",skw_close_medium_up,0, White);
 		//PlotNumeric("closetest3",skw_close_medium_down,0, White);
-		PlotNumeric("closetest2",local_high,0, red);
-		PlotNumeric("closetest3",local_low,0, green);
+		//PlotNumeric("closetest2",local_high,0, red);
+		//PlotNumeric("closetest3",local_low,0, green);
 		
 		
 		//PlotNumeric("closetest4",proposed_open_price,0, blue);
@@ -312,7 +340,7 @@ Begin
 			//PlotString("score", Text(Round(virtual_account_position,0)), high, Yellow,0);
 		}
 		//PlotString("score", Text(round(skw_close_mom_change_for_close,2)), high, Yellow,0);
-		//PlotNumeric("openline", Average(close[1], IntPart(bar_per_day/10)), 0, Red,0);
+		PlotNumeric("openline", ping_price, 0, Red,0);
 		//PlotNumeric("closeline", closeline, 0, Green,0);
 		//PlotNumeric("center", step_center, 0, color,0);
 		//PlotNumeric("attention", attention);
