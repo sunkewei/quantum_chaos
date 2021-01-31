@@ -1,6 +1,6 @@
 
 //------------------------------------------------------------------------
-// 简称: skwmain
+// 简称: skwmain v17
 // 名称: skwmain
 // 类别: 公式应用
 // 类型: 用户应用
@@ -14,7 +14,7 @@ Vars
 	Numeric bar_per_day;
 	 
 	NumericSeries skw_close;
-	
+	NumericSeries middle_close;
 	NumericSeries skw_close_mom;
 	NumericSeries skw_close_mom_change;
 	NumericSeries skw_close_mom_small;
@@ -33,8 +33,11 @@ Vars
 	NumericSeries last_sell_count;
 	
 	NumericSeries ping_price(0);
+	NumericSeries kai_price(0);
+	NumericSeries virtual_ping(0);
 	
-	
+	NumericSeries div_close;
+	Numeric shift;
 	
 	NumericSeries posi_series(0);
 	
@@ -48,6 +51,7 @@ Vars
 	Numeric highest_posi;
 	Numeric lowest_posi;
 	NumericSeries current_posi;
+	NumericSeries current_posi_exp;
 	
 	
 	Numeric color;
@@ -66,6 +70,8 @@ Vars
 	Numeric tmp_low;
 	Numeric local_low;
 	Numeric local_high;
+	Numeric local_low_exp;
+	Numeric local_high_exp;
 	NumericSeries profit_percent;
 	Numeric tmp_density;
 	String outputstr;
@@ -78,53 +84,106 @@ Vars
 	NumericSeries closeline;
 	Bool over_flag(False);
 	Bool under_flag(False);
-	
+	NumericSeries ama;
+	NumericSeries ama_raw;
+	NumericSeries sigmoid_ama;
+	Numeric ama_change;
+	Numeric ama_raw_change;
 	NumericSeries virtual_account_position(0);
+	NumericSeries downlimit(4);
+	NumericSeries uplimit(-4);
+	Bool crossoverflag;
+	Bool crossdownflag;
 	
-	
+
+	NumericSeries at_high(0);
+	NumericSeries at_low(0);
+	NumericSeries trend(0);
+	NumericSeries span(0);
+	Bool high_flag;
+	Bool low_flag;
 	
 	
 
 Begin
 		
-		// initialize
+		//////////////////
+		//  INITIALIZE  //
+		//////////////////
 		filename = "c:\\trade_log\\trade_"+Symbol+".txt";
-		units = round((30000/(Close*ContractUnit/10)),0);
+		units = round((15000/(Close*ContractUnit/10)),0);
 		daybars = BarsSinceToday();
 		bar_per_day = Highest(daybars, Max(daybars[1]*5,20))+1;
 		current_status = current_status[1];
 		openline = openline[1];
 		closeline = closeline[1];
 		posi_series = MarketPosition;
-		
-		
 		skw_close = Close;
-		
 		if(CurrentBar<=1 ){
 			SetGlobalVar(1, 1);
 			skw_close_mom = Close;
 			skw_close_mom_small = Close;
-			ping_price = close;
-			backfall = close;
-			
+			ping_price = Close;
+			kai_price = Close;
+			backfall = Close;
 			last_buy_count = -1;
 			last_sell_count = -1;
-			
 			openline = Close;
 			closeline = Close;
 			virtual_account_position = 0;
+			virtual_ping = 0;
 			return;
 		}
 		ping_price = ping_price[1];
+		kai_price = kai_price[1];
 		backfall = backfall[1];
 		virtual_account_position = virtual_account_position[1];
+		virtual_ping = virtual_ping[1];
+		
+		
+		
+		/////////////////////////////////
+		//  MOMENTUM  & Current Status //
+		/////////////////////////////////
+		
+
+
+
+		span = Abs((skw_close - skw_close[1])*100/skw_close[1]/0.1);
+		//PlotString("score", Text(Round(span,1)), high, white,0);
+		at_high = at_high[1]+span;
+		at_low = at_low[1]+span;
+		high_flag = (skw_close == Highest(skw_close, bar_per_day*3));
+		If(high_flag){
+			at_high = at_high[1]*3/4;
+			//PlotBool("aa",true, close);
+		}
+		low_flag = (skw_close == Lowest(skw_close, bar_per_day*3));
+		If(low_flag){
+			at_low = at_low[1]*3/4;
+			//PlotBool("aa",False, close);
+		}
+		trend = (1/at_high - 1/at_low)*100;
+		
+		/*if( trend>0){
+			PlotBool("aa",true, close);
+		}
+		if(trend<0){
+			PlotBool("aa",false, close);
+		}*/
+		
+		
+		
+		
+		
+		
 		skw_close_mom_change = (skw_close - skw_close[15*bar_per_day] + skw_close-skw_close[10*bar_per_day])/(25*bar_per_day);
 		skw_close_mom = skw_close_mom[1]+ skw_close_mom_change;
 		
 		skw_close_mom_change_small = (skw_close - skw_close[5*bar_per_day] + skw_close-skw_close[bar_per_day*10])/(15*bar_per_day);
 		skw_close_mom_small = skw_close_mom_small[1]+ skw_close_mom_change_small;
 		
-		skw_close_mom_change_extreme = (skw_close - skw_close[IntPart(0.25*bar_per_day)])/(IntPart(0.25*bar_per_day));
+		skw_close_mom_change_extreme = (skw_close - skw_close[IntPart(0.25*bar_per_day)])*100/(IntPart(0.25*bar_per_day))/skw_close;
 		
 		skw_close_mom_change_for_close = (skw_close - skw_close[IntPart(0.1*bar_per_day)])/(IntPart(0.1*bar_per_day));
 		
@@ -135,49 +194,123 @@ Begin
 		
 		
 		
-		If(Close>skw_close_mom and skw_close_mom_change>40){
-			current_status =  1;
-		}Else If(Close<=skw_close_mom and skw_close_mom_change<-40){
-			current_status = - 1;
-		}Else{
-			current_status = current_status[1];
-		}
-		If(sign(skw_close_mom_change) * sign(skw_close_mom_change_small)<0 or Abs(skw_close_mom_change)<=10){
-			current_status = 0;
-		}
 		
 		
+		//////////////////
+		//  POSITION Exp   //
+		//////////////////
 		
 		period = 2;
+		middle_close = (Highest(skw_close, bar_per_day*period)+Lowest(skw_close, bar_per_day*period))/2;
+		div_close = skw_close - middle_close;
+		shift = (skw_close - skw_close[IntPart(0.25*bar_per_day)])*100/(IntPart(0.25*bar_per_day));//(skw_close - skw_close[2*bar_per_day]);
+		
+		
+		local_high_exp = Highest(div_close, bar_per_day*period) + shift + middle_close;
+		local_low_exp = Lowest( div_close, bar_per_day*period)+ shift +middle_close;
+		current_posi_exp =(skw_close - local_low_exp)*100/(local_high_exp-local_low_exp);
+		
+	
+		
+		//////////////////
+		//  POSITION    //
+		//////////////////
+		period = 2;
 		strength = 5;
+		
+		
+		//PlotNumeric("middleclose", middle_close);
+		
+		/*local_high = Highest(middle_close, bar_per_day*period);
+		local_low = Lowest( middle_close, bar_per_day*period);
+		highest_posi = HighestBar( middle_close, bar_per_day*period);
+		lowest_posi = LowestBar( middle_close, bar_per_day*period);
+		current_posi = Round((middle_close - local_low)*100/(local_high-local_low), 1);
+		PlotString("posi", Text(Round(current_posi,0)), high, white,0); 
+		*/
 		
 		local_high = SwingHigh(1,Close, strength, bar_per_day*period);
 		local_low = SwingLow(1, Close, strength, bar_per_day*period);
 		highest_posi = SwingHighBar(1, Close, strength, bar_per_day*period);
 		lowest_posi = SwingLowBar(1, Close, strength, bar_per_day*period);
-		
 		current_posi = Round((Close - local_low)*100/(local_high-local_low), 1);
 		
+		//////////////////
+		//  AMA         //
+		//////////////////
+		ama = AdaptiveMovAvg(skw_close, IntPart(bar_per_day/2), Max(IntPart(bar_per_day/32),2), IntPart(bar_per_day*0.7));
+		//ama = (Highest(ama_raw, bar_per_day/2)+Lowest(ama_raw, bar_per_day/2))/2;
+		ama_raw = Average(ama, bar_per_day);
+		sigmoid_ama = ((ama-ama[1])*100/ama[1])*55;
+		sigmoid_ama = Min(Exp(-1*sigmoid_ama),1000);
+		sigmoid_ama = 1/(1+sigmoid_ama);
+		sigmoid_ama = (sigmoid_ama-0.5)*10;
 		
+		crossoverflag = CrossOver(sigmoid_ama, downlimit);
+		crossdownflag = CrossUnder(sigmoid_ama, uplimit);
+		
+		std_dev = StandardDev(Close, bar_per_day);
+		ama_change = (ama-ama[1])*1000/ama[1];
+		ama_raw_change = (ama_raw-ama_raw[1])*1000/ama_raw[1];
+		
+		
+		If(Close>skw_close_mom and skw_close_mom_change>40 and ama_change>0 and trend>0){
+			current_status =  1;
+		}Else If(Close<=skw_close_mom and skw_close_mom_change<-40 and ama_change<0 and trend<0){
+			current_status = - 1;
+		}Else{
+			current_status = current_status[1];
+		}
+		If(sign(skw_close_mom_change) * sign(skw_close_mom_change_small)<0 or sign(skw_close_mom_change) * Sign(trend)<0 or Abs(skw_close_mom_change)<=10){
+			current_status = 0;
+		}
+		
+		///////////////////////////////////////
+		//  Virtual Account Position         //
+		///////////////////////////////////////
 		
 		threshold = 25;
-		
-		
-		
-		
 		virtual_account_position = 0;
 		if(Abs(virtual_account_position[1])>=(2/bar_per_day)){
 			virtual_account_position = Sign(virtual_account_position[1])*(Abs(virtual_account_position[1])-1/bar_per_day);
+			virtual_account_position = virtual_account_position*(1 +(skw_close_mom_change_extreme/100+ama_change/100)/25);
 		}
 		
 		if(current_status>0 and local_high>local_low and highest_posi-lowest_posi>0 and (current_posi-threshold)>0 and (Min(current_posi,5)-threshold)<0){
+			
 			virtual_account_position = 1;
+			
+			
+			
 		}
 		if(current_status<0 and local_high>local_low and highest_posi-lowest_posi<0 and (current_posi-(100-threshold))<0 and (Max(current_posi[1],4)-(100-threshold))>0){
+			
 			virtual_account_position = -1;
+			
 		}
 		
 		
+		///////////////////////
+		//  KAI PRICE        //
+		///////////////////////
+		if(virtual_account_position==1 and virtual_account_position[1]<1 and MarketPosition<1){
+			kai_price = Close;
+		}Else
+		if(virtual_account_position==-1 and virtual_account_position[1]>-1 and MarketPosition>-1){
+			kai_price = Close;
+		}Else
+		if(virtual_account_position[1]==1 and virtual_account_position[2]<1 and MarketPosition<1){
+			kai_price = Close*(1-0.43/100+skw_close_mom_change_extreme/100+ama_change/100);
+		}Else
+		if(virtual_account_position[1]==-1 and virtual_account_position[2]>-1 and MarketPosition>-1){
+			kai_price = Close*(1+0.43/100 +skw_close_mom_change_extreme/100+ama_change/100);
+		}Else if(virtual_account_position!=0){
+			kai_price = kai_price[1]*(1 +(skw_close_mom_change_extreme/100+ama_change/100)/25);
+		
+		}
+		//////////////////////////////////
+		//  BUY SELL EXPIRED TIME       //
+		//////////////////////////////////
 		
 		if(last_buy_count>-1){
 			last_buy_count = last_buy_count[1] +1/bar_per_day;
@@ -186,27 +319,20 @@ Begin
 			last_sell_count = last_sell_count[1]+1/bar_per_day;
 		}
 		
-		if(virtual_account_position==1 and MarketPosition<=0){
-				If(last_buy_count<2 and skw_close_mom_change_extreme>0){
-					Buy(units, Close);
-					backfall = Close;
-				}
-				If(last_buy_count>2){
-					last_buy_count = 0;
-				}
-				
-				
-		}
 		
-		
-		if(current_status==-1 and skw_close_mom_change<0 and MarketPosition>0){
-				sell(0, close);
+		if(virtual_account_position>0.8 and virtual_account_position<1 and MarketPosition<=0){
+			If(last_buy_count<2 and Close<kai_price and current_posi_exp<0 ){
+				Buy(units, Close);
+				backfall = Close;
+			}
+			If(last_buy_count>2){
 				last_buy_count = 0;
+			}
 		}
 		
 		
-		if(virtual_account_position==-1 and MarketPosition>=0){
-			If(last_sell_count<2  and skw_close_mom_change_extreme<0){
+		if(virtual_account_position<-0.8 and virtual_account_position>-1 and MarketPosition>=0){
+			If(last_sell_count<2  and  Close>kai_price and current_posi_exp>100){
 				SellShort(units, close);
 				backfall = Close;
 			}
@@ -216,45 +342,57 @@ Begin
 		}
 		
 		if( (MarketPosition>0 and (close-backfall)*100/backfall<-2)
-			or (MarketPosition<0 and (close-backfall)*100/backfall>2)){
+			or (MarketPosition<0 and (close-backfall)*100/backfall>2)
+			/*or (BarsSinceLastEntry/bar_per_day>=1 and (BarsSinceLastEntry-1)/bar_per_day<1)*/){
 			ping_price = ping_price*(1-0.7/100*MarketPosition);
 			backfall = Close;
 		}
 		
-		//if(virtual_account_position == -1 and MarketPosition>=0){
-		//	SellShort(units, Close[1]);
-		//}
-		
-		if(current_status==1 and skw_close_mom_change>0 and MarketPosition<0){
-			BuyToCover(0, close);
-			last_sell_count = 0;
-		}
 		
 		profit_limit = 0.77;
 		
 		If(MarketPosition!=0){
 			profit = (Close-close[BarsSinceLastEntry+1])*100/Close[BarsSinceLastEntry+1];
 			
-			//if(profit*MarketPosition>=profit_limit){
-				If(MarketPosition==1 and Close>ping_price and BarsSinceLastEntry>2 ){
+			
+			If(MarketPosition==1 and Close>ping_price and BarsSinceLastEntry>2 ){
+				virtual_account_position = 0;
+				virtual_ping = 1;
+			}
+			If(MarketPosition==-1  and Close<ping_price and BarsSinceLastEntry>2){
+				last_sell_count = 0;
+				virtual_account_position = 0;
+				virtual_ping = -1;
+				
+			}
+			
+
+			if(/*virtual_account_position == 0 and */MarketPosition==1){
+				if(sigmoid_ama<4.95 and virtual_ping==1){
 					last_buy_count = 0;
 					sell(0, close);
-					
+					virtual_ping=0;
 				}
-				If(MarketPosition==-1  and Close<ping_price and BarsSinceLastEntry>2){
+					
+			}
+			if(/*virtual_account_position == 0 and*/ MarketPosition==-1){
+				if(sigmoid_ama>-4.95 and virtual_ping==-1){
 					last_sell_count = 0;
 					BuyToCover(0, close);
-					
+					virtual_ping=0;
 				}
-				
-			//}
+			}
+			
 			if( profit*MarketPosition<-4.1 and BarsSinceLastEntry>2){
 				If(MarketPosition==1){
 					sell(0, close);
+					virtual_account_position = 0;
+					virtual_ping = 0;
 				}
 				If(MarketPosition==-1){
 					BuyToCover(0, close);
-					
+					virtual_account_position = 0;
+					virtual_ping = 0;
 				}
 				last_buy_count = 3;
 			}
@@ -339,18 +477,20 @@ Begin
 		if(virtual_account_position !=0){
 			//PlotString("score", Text(Round(virtual_account_position,0)), high, Yellow,0);
 		}
-		//PlotString("score", Text(round(skw_close_mom_change_for_close,2)), high, Yellow,0);
-		PlotNumeric("openline", ping_price, 0, Red,0);
-		//PlotNumeric("closeline", closeline, 0, Green,0);
+		//PlotString("score", Text(Round(current_posi,1)), high, Yellow,0);
+		//PlotNumeric("pingline", ping_price, 0, green,0);
+		//PlotNumeric("kailine", kai_price, 0, red,0);
+		//PlotNumeric("amah", local_high_exp, 0, Red,0);
+		//PlotNumeric("ama", local_low_exp, 0, green,0);
 		//PlotNumeric("center", step_center, 0, color,0);
 		//PlotNumeric("attention", attention);
 		//PlotNumeric("limit", 1);	
-		/*if(virtual_account_position>0){
+		if(virtual_ping==1){
 			PlotBool("aa",true, close);
 		}
-		if(virtual_account_position<0){
+		if(virtual_ping==-1){
 			PlotBool("aa",false, close);
-		}*/
+		}
 		
 		
 		
