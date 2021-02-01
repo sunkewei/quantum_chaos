@@ -40,6 +40,7 @@ Vars
 	Numeric shift;
 	
 	NumericSeries posi_series(0);
+	NumericSeries ready_to_open(0);
 	
 	
 	
@@ -57,6 +58,7 @@ Vars
 	Numeric color;
 	Numeric profit(0);
 	Numeric profit_money(0);
+	Numeric local_posi(0);
 	
 	
 	Numeric units;
@@ -72,6 +74,8 @@ Vars
 	Numeric local_high;
 	Numeric local_low_exp;
 	Numeric local_high_exp;
+	NumericSeries local_low_exp_raw;
+	NumericSeries local_high_exp_raw;
 	NumericSeries profit_percent;
 	Numeric tmp_density;
 	String outputstr;
@@ -132,6 +136,7 @@ Begin
 			closeline = Close;
 			virtual_account_position = 0;
 			virtual_ping = 0;
+			ready_to_open = 0;
 			return;
 		}
 		ping_price = ping_price[1];
@@ -139,6 +144,12 @@ Begin
 		backfall = backfall[1];
 		virtual_account_position = virtual_account_position[1];
 		virtual_ping = virtual_ping[1];
+		ready_to_open = ready_to_open[1];
+		If(ready_to_open>0){
+			ready_to_open = Sign(ready_to_open)*(Abs(ready_to_open)-1/bar_per_day/2);
+		}Else{
+			ready_to_open = 0;
+		}
 		
 		
 		
@@ -206,12 +217,13 @@ Begin
 		shift = (skw_close - skw_close[IntPart(0.25*bar_per_day)])*100/(IntPart(0.25*bar_per_day));//(skw_close - skw_close[2*bar_per_day]);
 		
 		
-		local_high_exp = Highest(div_close, bar_per_day*period) + shift + middle_close;
+		local_high_exp= Highest(div_close, bar_per_day*period) + shift + middle_close;
 		local_low_exp = Lowest( div_close, bar_per_day*period)+ shift +middle_close;
+		
 		current_posi_exp =(skw_close - local_low_exp)*100/(local_high_exp-local_low_exp);
 		
-	
-		
+		period =10;
+		local_posi = (skw_close-Lowest(skw_close, period))*100/(Highest(skw_close, period) - Lowest(skw_close,period));
 		//////////////////
 		//  POSITION    //
 		//////////////////
@@ -293,21 +305,25 @@ Begin
 		///////////////////////
 		//  KAI PRICE        //
 		///////////////////////
-		if(virtual_account_position==1 and virtual_account_position[1]<1 and MarketPosition<1){
-			kai_price = Close;
-		}Else
-		if(virtual_account_position==-1 and virtual_account_position[1]>-1 and MarketPosition>-1){
-			kai_price = Close;
-		}Else
-		if(virtual_account_position[1]==1 and virtual_account_position[2]<1 and MarketPosition<1){
-			kai_price = Close*(1-0.43/100+skw_close_mom_change_extreme/100+ama_change/100);
-		}Else
-		if(virtual_account_position[1]==-1 and virtual_account_position[2]>-1 and MarketPosition>-1){
-			kai_price = Close*(1+0.43/100 +skw_close_mom_change_extreme/100+ama_change/100);
-		}Else if(virtual_account_position!=0){
-			kai_price = kai_price[1]*(1 +(skw_close_mom_change_extreme/100+ama_change/100)/25);
 		
-		}
+			if(virtual_account_position==1 and virtual_account_position[1]<1 and MarketPosition<1){
+				kai_price = Close;
+			}Else
+			if(virtual_account_position==-1 and virtual_account_position[1]>-1 and MarketPosition>-1){
+				kai_price = Close;
+			}Else
+			if(virtual_account_position[1]==1 and virtual_account_position[2]<1 and MarketPosition<1){
+				kai_price = Close*(1-0.43/100+skw_close_mom_change_extreme/100+ama_change/100);
+			}Else
+			if(virtual_account_position[1]==-1 and virtual_account_position[2]>-1 and MarketPosition>-1){
+				kai_price = Close*(1+0.43/100 +skw_close_mom_change_extreme/100+ama_change/100);
+			}Else if(virtual_account_position!=0 ){
+				if(ready_to_open==0){
+					kai_price = kai_price[1]*(1 +(skw_close_mom_change_extreme/100+ama_change/100)/25);
+				}
+			
+			}
+		
 		//////////////////////////////////
 		//  BUY SELL EXPIRED TIME       //
 		//////////////////////////////////
@@ -321,24 +337,52 @@ Begin
 		
 		
 		if(virtual_account_position>0.8 and virtual_account_position<1 and MarketPosition<=0){
+			
 			If(last_buy_count<2 and Close<kai_price and current_posi_exp<0 ){
-				Buy(units, Close);
-				backfall = Close;
+				ready_to_open = 1;
+				if(local_posi>5){
+					ready_to_open = 0;
+					Buy(units, Close);
+					backfall = Close;
+				}
 			}
 			If(last_buy_count>2){
 				last_buy_count = 0;
 			}
 		}
+		if(ready_to_open>0 and local_posi>=100 and Close<kai_price){
+			ready_to_open = 0;
+			Buy(units, Close);
+			backfall = Close;
+		}
+		if(ready_to_open>0){
+			last_buy_count = last_buy_count[1];
+			PlotBool("aa",true, close);
+		}
 		
 		
 		if(virtual_account_position<-0.8 and virtual_account_position>-1 and MarketPosition>=0){
+			
 			If(last_sell_count<2  and  Close>kai_price and current_posi_exp>100){
-				SellShort(units, close);
-				backfall = Close;
+			    ready_to_open = -1;
+				if(local_posi<95){
+					ready_to_open = 0;
+					SellShort(units, close);
+					backfall = Close;
+				}
 			}
 			If(last_sell_count>2){
 				last_sell_count = 0;
 			}
+		}
+		if(ready_to_open<0 and local_posi<=0 and Close>kai_price){
+			ready_to_open = 0;
+			SellShort(units, close);
+			backfall = Close;
+		}
+		if(ready_to_open<0){
+			last_sell_count = last_sell_count[1];
+			PlotBool("aa",false, close);
 		}
 		
 		if( (MarketPosition>0 and (close-backfall)*100/backfall<-2)
@@ -356,6 +400,7 @@ Begin
 			
 			
 			If(MarketPosition==1 and Close>ping_price and BarsSinceLastEntry>2 ){
+				last_buy_count = 0;
 				virtual_account_position = 0;
 				virtual_ping = 1;
 			}
@@ -367,7 +412,7 @@ Begin
 			}
 			
 
-			if(/*virtual_account_position == 0 and */MarketPosition==1){
+			if(virtual_account_position == 0 and MarketPosition==1){
 				if(sigmoid_ama<4.95 and virtual_ping==1){
 					last_buy_count = 0;
 					sell(0, close);
@@ -375,7 +420,7 @@ Begin
 				}
 					
 			}
-			if(/*virtual_account_position == 0 and*/ MarketPosition==-1){
+			if(virtual_account_position == 0 and MarketPosition==-1){
 				if(sigmoid_ama>-4.95 and virtual_ping==-1){
 					last_sell_count = 0;
 					BuyToCover(0, close);
@@ -477,20 +522,20 @@ Begin
 		if(virtual_account_position !=0){
 			//PlotString("score", Text(Round(virtual_account_position,0)), high, Yellow,0);
 		}
-		//PlotString("score", Text(Round(current_posi,1)), high, Yellow,0);
-		//PlotNumeric("pingline", ping_price, 0, green,0);
-		//PlotNumeric("kailine", kai_price, 0, red,0);
+		//PlotString("score", Text(Round(last_buy_count,1)), high, Yellow,0);
+		PlotNumeric("pingline", ping_price, 0, green,0);
+		PlotNumeric("kailine", kai_price, 0, red,0);
 		//PlotNumeric("amah", local_high_exp, 0, Red,0);
 		//PlotNumeric("ama", local_low_exp, 0, green,0);
 		//PlotNumeric("center", step_center, 0, color,0);
 		//PlotNumeric("attention", attention);
 		//PlotNumeric("limit", 1);	
-		if(virtual_ping==1){
+		/*if(virtual_ping==1){
 			PlotBool("aa",true, close);
 		}
 		if(virtual_ping==-1){
 			PlotBool("aa",false, close);
-		}
+		}*/
 		
 		
 		
